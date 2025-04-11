@@ -75,7 +75,7 @@ class AylaSetupAssistant:
             try:
                 with open(bashrc_path, 'r') as f:
                     if any(line.strip() == alias_line for line in f):
-                        self.ui.print_info("L'alias 'aila' existe déjà dans votre .bashrc")
+                        self.ui.print_info("L'alias 'ayla' existe déjà dans votre .bashrc")
                         return
             except FileNotFoundError:
                 pass
@@ -83,7 +83,7 @@ class AylaSetupAssistant:
             try:
                 with open(bashrc_path, 'a') as f:
                     f.write(f"\n# Alias pour Ayla CLI\n{alias_line}\n")
-                self.ui.print_info("Alias 'aila' ajouté à votre .bashrc")
+                self.ui.print_info("Alias 'ayla' ajouté à votre .bashrc")
                 self.ui.print_warning("N'oubliez pas d'exécuter 'source ~/.bashrc' pour activer l'alias.")
             except Exception as e:
                 self.ui.print_error(f"Erreur lors de l'ajout de l'alias: {str(e)}")
