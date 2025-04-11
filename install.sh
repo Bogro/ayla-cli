@@ -141,13 +141,13 @@ create_symlink() {
 
     # Créer le script d'enveloppe dans ~/bin
     mkdir -p "$HOME/bin"
-    WRAPPER_PATH="$HOME/bin/ayla-cli.py"
+    WRAPPER_PATH="$HOME/bin/main.py"
 
     cat > "$WRAPPER_PATH" << EOF
 #!/usr/bin/env bash
 # Script d'enveloppe pour Claude CLI
 source "$INSTALL_DIR/venv/bin/activate"
-$PYTHON_CMD "$INSTALL_DIR/ayla-cli.py" "\$@"
+$PYTHON_CMD "$INSTALL_DIR/main.py" "\$@"
 EOF
 
     chmod +x "$WRAPPER_PATH"
@@ -169,7 +169,7 @@ EOF
     echo -e "${YELLOW}Pour appliquer ces changements, redémarrez votre terminal ou exécutez:${NC}"
     echo -e "${BLUE}source $RC_FILE${NC}"
 
-    echo -e "${GREEN}Le script 'ayla-cli.py' est maintenant disponible globalement via la commande 'ayla'.${NC}"
+    echo -e "${GREEN}Le script est maintenant disponible globalement via la commande 'ayla'.${NC}"
 }
 
 # Configuration initiale
