@@ -8,7 +8,7 @@ from src.ui import UI
 
 
 class AylaSetupAssistant:
-    """Assistant de configuration pour Bocode CLI"""
+    """Assistant de configuration pour Ayla CLI"""
 
     def __init__(self, config: AylaConfig, ui: UI):
         """Initialise l'assistant de configuration"""
@@ -93,7 +93,7 @@ class AylaSetupAssistant:
     async def setup(self):
         """Lance l'assistant de configuration"""
         self.ui.console.print(Panel.fit(
-            "[bold]Assistant de configuration Bocode CLI[/bold]\n\n"
+            "[bold]Assistant de configuration Ayla CLI[/bold]\n\n"
             "Cet assistant va vous aider à configurer l'outil pour une utilisation optimale.",
             title="Configuration",
             border_style="blue"
@@ -153,4 +153,4 @@ class AylaSetupAssistant:
         self.ui.console.print("\n[bold green]Configuration terminée et sauvegardée avec succès![/bold green]")
 
         # Demander si l'utilisateur souhaite créer un alias
-        self._setup_alias()
+        # self._setup_alias()
