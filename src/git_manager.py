@@ -900,4 +900,421 @@ Voici le diff :
         if success:
             return output or "Aucun commit trouvé avec ces critères"
         else:
-            return f"Erreur lors de la récupération du log: {output}" 
+            return f"Erreur lors de la récupération du log: {output}"
+
+    def visualize_git_history(self, max_count: int = 30, include_all_branches: bool = False,
+                            compact: bool = False, include_stats: bool = False) -> str:
+        """
+        Génère une visualisation ASCII avancée de l'historique Git avec branches et relations
+        
+        Args:
+            max_count: Nombre maximum de commits à afficher
+            include_all_branches: Si True, inclut toutes les branches, même si non actives
+            compact: Si True, utilise un format plus compact
+            include_stats: Si True, inclut des statistiques pour chaque commit
+            
+        Returns:
+            Représentation visuelle ASCII de l'historique Git
+        """
+        if not self.is_git_repo:
+            return "Vous n'êtes pas dans un dépôt Git valide"
+            
+        # Construire la commande avec les bonnes options
+        command = ['log']
+        command.append(f'-{max_count}')
+        command.append('--graph')  # Option clé pour le graphe ASCII
+        
+        if include_all_branches:
+            command.append('--all')
+            
+        if include_stats:
+            command.append('--stat')
+            
+        # Format personnalisé pour mieux visualiser les branches
+        format_style = 'format:"%C(auto)%h %C(blue)%ad%C(auto)%d %C(reset)%s"'
+        if not compact:
+            format_style = 'format:"%C(auto)%h %C(blue)%ad%C(auto)%d %C(reset)%s %C(dim green)[%an]"'
+        
+        command.append(f'--pretty={format_style}')
+        command.append('--date=short')
+        
+        # Ajouter des couleurs et utiliser Unicode pour améliorer la visualisation
+        command.append('--color=always')
+        
+        # Exécuter la commande
+        success, output = self._run_git_command(command)
+        
+        if not success:
+            return f"Erreur lors de la génération de la visualisation: {output}"
+            
+        # Améliorer l'affichage avec des caractères Unicode pour remplacer les ASCII standards
+        enhanced_output = output
+        if not compact:
+            # Remplacer les caractères ASCII par des caractères Unicode plus élégants
+            replacements = {
+                '|': '│',
+                '/': '╱',
+                '\\': '╲',
+                '*': '●',
+                '+': '┼',
+            }
+            for ascii_char, unicode_char in replacements.items():
+                enhanced_output = enhanced_output.replace(ascii_char, unicode_char)
+        
+        return enhanced_output
+        
+    def assist_merge_conflicts(self, source_branch: str) -> Dict[str, Any]:
+        """
+        Analyse les conflits de fusion et fournit une assistance pour les résoudre
+        
+        Args:
+            source_branch: Branche source qu'on tente de fusionner
+            
+        Returns:
+            Dictionnaire contenant les informations sur les conflits et suggestions
+        """
+        if not self.is_git_repo:
+            return {"error": "Vous n'êtes pas dans un dépôt Git valide"}
+            
+        # Vérifier si une fusion est en cours
+        merge_head_path = os.path.join(self.repo_path, '.git', 'MERGE_HEAD')
+        if not os.path.exists(merge_head_path):
+            return {"error": "Aucune fusion en cours"}
+            
+        # Obtenir la liste des fichiers en conflit
+        success, output = self._run_git_command(['diff', '--name-only', '--diff-filter=U'])
+        
+        if not success:
+            return {"error": f"Erreur lors de la récupération des conflits: {output}"}
+            
+        conflict_files = [f for f in output.strip().split('\n') if f]
+        
+        # Analyser chaque fichier en conflit
+        conflicts_analysis = []
+        for file_path in conflict_files:
+            # Lire le contenu du fichier avec les marqueurs de conflit
+            try:
+                with open(os.path.join(self.repo_path, file_path), 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except Exception as e:
+                conflicts_analysis.append({
+                    "file": file_path,
+                    "error": f"Impossible de lire le fichier: {str(e)}"
+                })
+                continue
+                
+            # Trouver les sections en conflit
+            conflicts_in_file = []
+            conflict_markers = [
+                ("<<<<<<< HEAD", "=======", ">>>>>>> " + source_branch)
+            ]
+            
+            for start_marker, middle_marker, end_marker in conflict_markers:
+                start_idx = 0
+                while True:
+                    # Chercher le début du conflit
+                    start_idx = content.find(start_marker, start_idx)
+                    if start_idx == -1:
+                        break
+                        
+                    # Chercher le milieu et la fin du conflit
+                    middle_idx = content.find(middle_marker, start_idx)
+                    if middle_idx == -1:
+                        break
+                        
+                    end_idx = content.find(end_marker, middle_idx)
+                    if end_idx == -1:
+                        break
+                        
+                    # Extraire les versions en conflit
+                    current_version = content[start_idx + len(start_marker):middle_idx].strip()
+                    incoming_version = content[middle_idx + len(middle_marker):end_idx].strip()
+                    
+                    # Analyser le conflit
+                    conflict_type = self._determine_conflict_type(current_version, incoming_version)
+                    suggested_resolution = self._suggest_conflict_resolution(
+                        current_version, incoming_version, conflict_type
+                    )
+                    
+                    conflicts_in_file.append({
+                        "type": conflict_type,
+                        "current_version": current_version,
+                        "incoming_version": incoming_version,
+                        "suggestion": suggested_resolution
+                    })
+                    
+                    # Avancer au-delà de ce conflit
+                    start_idx = end_idx + len(end_marker)
+            
+            conflicts_analysis.append({
+                "file": file_path,
+                "conflicts_count": len(conflicts_in_file),
+                "conflicts": conflicts_in_file
+            })
+            
+        return {
+            "source_branch": source_branch,
+            "target_branch": self.current_branch,
+            "conflict_files_count": len(conflict_files),
+            "conflict_files": conflict_files,
+            "analysis": conflicts_analysis,
+            "command_suggestions": [
+                f"git checkout --ours -- <file>   # Pour garder la version de {self.current_branch}",
+                f"git checkout --theirs -- <file> # Pour garder la version de {source_branch}",
+                "git add <file>                  # Après résolution manuelle"
+            ]
+        }
+        
+    def _determine_conflict_type(self, current: str, incoming: str) -> str:
+        """
+        Détermine le type de conflit entre deux versions
+        
+        Args:
+            current: Version actuelle
+            incoming: Version entrante
+            
+        Returns:
+            Type de conflit ('ajout', 'suppression', 'modification', 'complexe')
+        """
+        if not current and incoming:
+            return "ajout"
+        elif current and not incoming:
+            return "suppression"
+        elif current.strip() == incoming.strip():
+            return "aucun_changement"
+        
+        # Analyse plus fine des modifications
+        words_current = set(current.split())
+        words_incoming = set(incoming.split())
+        
+        common_words = words_current.intersection(words_incoming)
+        total_words = len(words_current.union(words_incoming))
+        
+        if total_words > 0 and len(common_words) / total_words > 0.7:
+            return "modification_mineure"
+        
+        return "modification_majeure"
+        
+    def _suggest_conflict_resolution(self, current: str, incoming: str, conflict_type: str) -> str:
+        """
+        Suggère une résolution pour un conflit
+        
+        Args:
+            current: Version actuelle
+            incoming: Version entrante
+            conflict_type: Type de conflit
+            
+        Returns:
+            Suggestion de résolution
+        """
+        if conflict_type == "aucun_changement":
+            return current  # Les deux versions sont identiques
+            
+        if conflict_type == "ajout":
+            return incoming  # Garder l'ajout
+            
+        if conflict_type == "suppression":
+            return ""  # Confirmer la suppression
+            
+        if conflict_type == "modification_mineure":
+            # Pour les modifications mineures, on pourrait tenter une fusion manuelle
+            # mais pour simplifier on suggère de garder la version entrante
+            return incoming
+            
+        # Par défaut pour les modifications complexes, suggérer un examen manuel
+        return "## Conflit complexe nécessitant une résolution manuelle ##"
+        
+    def generate_sprint_retrospective(self, days: int = 14, 
+                                    include_stats: bool = True,
+                                    categorize: bool = True) -> Dict[str, Any]:
+        """
+        Génère une rétrospective de sprint basée sur l'activité Git récente
+        
+        Args:
+            days: Nombre de jours à inclure dans la rétrospective
+            include_stats: Si True, inclut des statistiques détaillées
+            categorize: Si True, catégorise les commits par type
+            
+        Returns:
+            Dictionnaire contenant les informations de rétrospective
+        """
+        if not self.is_git_repo:
+            return {"error": "Vous n'êtes pas dans un dépôt Git valide"}
+            
+        # Obtenir la date de début (il y a 'days' jours)
+        import datetime
+        start_date = datetime.datetime.now() - datetime.timedelta(days=days)
+        start_date_str = start_date.strftime("%Y-%m-%d")
+        
+        # Récupérer les commits sur cette période
+        command = [
+            'log', 
+            f'--since={start_date_str}', 
+            '--pretty=format:%h|%an|%ad|%s|%d',
+            '--date=short'
+        ]
+        
+        success, output = self._run_git_command(command)
+        
+        if not success or not output:
+            return {
+                "error": f"Aucun commit trouvé depuis {start_date_str}" 
+                if not output else f"Erreur: {output}"
+            }
+            
+        # Parser les commits
+        commits = []
+        for line in output.strip().split('\n'):
+            parts = line.split('|')
+            if len(parts) >= 4:
+                commit = {
+                    "hash": parts[0],
+                    "author": parts[1],
+                    "date": parts[2],
+                    "message": parts[3],
+                    "refs": parts[4] if len(parts) > 4 else ""
+                }
+                commits.append(commit)
+                
+        # Statistiques de base
+        authors_stats = {}
+        for commit in commits:
+            author = commit["author"]
+            if author not in authors_stats:
+                authors_stats[author] = {
+                    "commit_count": 0,
+                    "first_commit_date": None,
+                    "last_commit_date": None
+                }
+                
+            authors_stats[author]["commit_count"] += 1
+            
+            commit_date = commit["date"]
+            if (not authors_stats[author]["first_commit_date"] or 
+                commit_date < authors_stats[author]["first_commit_date"]):
+                authors_stats[author]["first_commit_date"] = commit_date
+                
+            if (not authors_stats[author]["last_commit_date"] or 
+                commit_date > authors_stats[author]["last_commit_date"]):
+                authors_stats[author]["last_commit_date"] = commit_date
+                
+        # Catégoriser les commits si demandé
+        commit_categories = {}
+        if categorize:
+            # Catégories communes basées sur les messages de commit
+            categories = {
+                "feature": ["feat", "feature", "add", "implement"],
+                "fix": ["fix", "bug", "resolve", "correct"],
+                "refactor": ["refactor", "clean", "improve"],
+                "docs": ["doc", "comment", "readme"],
+                "test": ["test", "spec", "coverage"],
+                "chore": ["chore", "update", "upgrade"],
+                "style": ["style", "format", "lint"],
+                "perf": ["perf", "performance", "optimize"]
+            }
+            
+            # Détecter la catégorie de chaque commit
+            for commit in commits:
+                message = commit["message"].lower()
+                assigned_category = None
+                
+                # Chercher dans le format Conventional Commits d'abord
+                conventional_match = re.match(r'^(\w+)(\([\w-]+\))?:', message)
+                if conventional_match:
+                    category_type = conventional_match.group(1)
+                    for cat, keywords in categories.items():
+                        if category_type in keywords:
+                            assigned_category = cat
+                            break
+                            
+                # Si pas trouvé, chercher des mots-clés
+                if not assigned_category:
+                    for cat, keywords in categories.items():
+                        if any(keyword in message for keyword in keywords):
+                            assigned_category = cat
+                            break
+                
+                # Catégorie par défaut
+                if not assigned_category:
+                    assigned_category = "other"
+                    
+                if assigned_category not in commit_categories:
+                    commit_categories[assigned_category] = []
+                    
+                commit_categories[assigned_category].append(commit)
+                
+        # Composer la rétrospective
+        retrospective = {
+            "period": {
+                "start_date": start_date_str,
+                "end_date": datetime.datetime.now().strftime("%Y-%m-%d"),
+                "days": days
+            },
+            "summary": {
+                "total_commits": len(commits),
+                "active_authors": len(authors_stats),
+                "commits_per_day": round(len(commits) / max(1, days), 2)
+            },
+            "authors": authors_stats,
+            "commits": commits[:10],  # Limiter à 10 pour éviter un rapport trop long
+            "has_more_commits": len(commits) > 10
+        }
+        
+        if categorize:
+            retrospective["categories"] = {
+                category: len(cat_commits) 
+                for category, cat_commits in commit_categories.items()
+            }
+            retrospective["categorized_commits"] = commit_categories
+            
+        if include_stats:
+            # Récupérer des statistiques supplémentaires
+            stats_command = [
+                'diff', 
+                f'--stat=1000', 
+                f'@{{{days}}}', 
+                'HEAD'
+            ]
+            
+            stats_success, stats_output = self._run_git_command(stats_command)
+            if stats_success:
+                # Récupérer le nombre de fichiers modifiés et les lignes ajoutées/supprimées
+                stats_lines = stats_output.strip().split('\n')
+                file_stats = []
+                
+                for line in stats_lines:
+                    if '|' in line and ('+' in line or '-' in line):
+                        parts = line.split('|')
+                        if len(parts) >= 2:
+                            file_name = parts[0].strip()
+                            changes = parts[1].strip()
+                            
+                            # Extraire les statistiques de modifications
+                            additions = changes.count('+')
+                            deletions = changes.count('-')
+                            
+                            file_stats.append({
+                                "file": file_name,
+                                "additions": additions,
+                                "deletions": deletions,
+                                "changes": additions + deletions
+                            })
+                
+                # Ajouter le récapitulatif final s'il existe
+                summary_line = None
+                for line in reversed(stats_lines):
+                    if 'changed' in line and ('insertion' in line or 'deletion' in line):
+                        summary_line = line.strip()
+                        break
+                        
+                retrospective["file_stats"] = {
+                    "files_changed": len(file_stats),
+                    "most_changed_files": sorted(
+                        file_stats, 
+                        key=lambda x: x["changes"], 
+                        reverse=True
+                    )[:5],  # Top 5 des fichiers les plus modifiés
+                    "summary": summary_line
+                }
+        
+        return retrospective 

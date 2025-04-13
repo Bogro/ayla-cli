@@ -308,6 +308,10 @@ class TUIManager:
             "/git-analyze": "Analyse le dépôt Git et fournit des insights",
             "/git-diff": "Analyse détaillée des changements actuels",
             "/git-conventional": "Génère un message de commit au format Conventional Commits",
+            "/git-log": "Affiche un historique Git amélioré avec différentes options de format",
+            "/git-visualize": "Affiche une visualisation avancée de l'historique Git avec graphique ASCII",
+            "/git-conflict-assist": "Fournit une assistance pour la résolution des conflits de fusion",
+            "/git-retrospective": "Génère une rétrospective d'activité sur la période spécifiée"
         }
 
         # Aide contextuelle pour les commandes (arguments et sous-commandes)
@@ -387,6 +391,16 @@ class TUIManager:
             "/git-log": {
                 "args": ["[format]", "[nombre]", "[graph]"],
                 "help": "Affiche un historique Git amélioré avec différentes options de format"
+            },
+            "/git-visualize": {
+                "help": "Affiche une visualisation avancée de l'historique Git avec graphique ASCII"
+            },
+            "/git-conflict-assist": {
+                "help": "Fournit une assistance pour la résolution des conflits de fusion"
+            },
+            "/git-retrospective": {
+                "args": ["[jours]"],
+                "help": "Génère une rétrospective d'activité sur la période spécifiée"
             }
         }
         

@@ -216,6 +216,52 @@ En mode interactif, vous pouvez également utiliser ces commandes :
 | `/git-merge <branche>` | Fusionne une branche |
 | `/git-merge-squash <branche>` | Fusionne avec squash |
 | `/git-log [format] [nombre] [graph]` | Affiche un log amélioré |
+| `/git-visualize` | Visualisation avancée de l'historique avec caractères Unicode |
+| `/git-conflict-assist` | Assistant intelligent pour résoudre les conflits de fusion |
+| `/git-retrospective [jours]` | Génère une rétrospective d'activité sur la période |
+
+### Fonctionnalités Git avancées
+
+Ayla CLI offre maintenant des fonctionnalités Git encore plus avancées:
+
+```bash
+# Visualisation avancée de l'historique Git avec graphique amélioré
+ayla --git-visualize
+
+# Assistant intelligent pour résoudre les conflits de fusion
+ayla --git-conflict-assist
+
+# Rétrospective de sprint sur les 14 derniers jours
+ayla --git-retrospective
+
+# Rétrospective personnalisée sur 30 jours
+ayla --git-retrospective 30
+```
+
+#### Visualisation de l'historique Git
+
+La commande `--git-visualize` offre:
+- Représentation graphique améliorée avec caractères Unicode
+- Affichage coloré des branches et relations
+- Vue complète de toutes les branches du projet
+- Format optimisé pour une meilleure lisibilité
+
+#### Assistance aux conflits de fusion
+
+La commande `--git-conflict-assist` fournit:
+- Analyse intelligente des conflits de fusion
+- Classification des types de conflits (ajout, suppression, modification mineure/majeure)
+- Suggestions de résolution pour chaque conflit
+- Commandes utiles pour faciliter la résolution
+
+#### Rétrospective de sprint
+
+La commande `--git-retrospective` génère:
+- Résumé complet de l'activité sur une période donnée
+- Statistiques par contributeur
+- Catégorisation des commits par type (feature, fix, refactor, etc.)
+- Visualisation des fichiers les plus modifiés
+- Représentation graphique de la répartition des types de commits
 
 ## Dépannage
 

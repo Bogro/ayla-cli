@@ -174,6 +174,13 @@ class AylaCli:
                               help="Nombre de commits à afficher dans le log")
         git_group.add_argument("--git-log-graph", action="store_true",
                               help="Affiche le log avec un graphe des branches")
+        git_group.add_argument("--git-visualize", action="store_true",
+                              help="Affiche une visualisation avancée de l'historique Git")
+        git_group.add_argument("--git-conflict-assist", action="store_true",
+                              help="Fournit une assistance pour résoudre les conflits de fusion")
+        git_group.add_argument("--git-retrospective", action="store", type=int, nargs="?", 
+                              const=14, metavar="JOURS",
+                              help="Génère une rétrospective basée sur l'activité récente (14 jours par défaut)")
 
         return parser
 
@@ -1145,6 +1152,15 @@ class AylaCli:
             
             self.ui.console.print("\n[bold]Historique Git[/bold]\n")
             self.ui.console.print(log_output)
+        elif command == '/git-visualize':
+            self._handle_git_visualize(args)
+            return True
+        elif command == '/git-conflict-assist':
+            self._handle_git_conflict_assist(args)
+            return True
+        elif command == '/git-retrospective':
+            self._handle_git_retrospective(args)
+            return True
         else:
             return f"Commande {command} non reconnue ou non implémentée."
 
@@ -1260,7 +1276,10 @@ class AylaCli:
             hasattr(args, 'git_stash_apply') and args.git_stash_apply,
             hasattr(args, 'git_merge') and args.git_merge,
             hasattr(args, 'git_merge_squash') and args.git_merge_squash,
-            hasattr(args, 'git_log') and args.git_log
+            hasattr(args, 'git_log') and args.git_log,
+            hasattr(args, 'git_visualize') and args.git_visualize,
+            hasattr(args, 'git_conflict_assist') and args.git_conflict_assist,
+            hasattr(args, 'git_retrospective') and args.git_retrospective is not None
         ])
         
         if not has_git_command:
@@ -1334,6 +1353,21 @@ class AylaCli:
         # Traiter la commande git-log
         if hasattr(args, 'git_log') and args.git_log:
             self._handle_git_log(args)
+            return True
+            
+        # Traiter la commande git-visualize
+        if hasattr(args, 'git_visualize') and args.git_visualize:
+            self._handle_git_visualize(args)
+            return True
+            
+        # Traiter la commande git-conflict-assist
+        if hasattr(args, 'git_conflict_assist') and args.git_conflict_assist:
+            self._handle_git_conflict_assist(args)
+            return True
+            
+        # Traiter la commande git-retrospective
+        if hasattr(args, 'git_retrospective') and args.git_retrospective is not None:
+            self._handle_git_retrospective(args)
             return True
             
         return False
@@ -1719,6 +1753,224 @@ class AylaCli:
         # Afficher le résultat
         self.ui.console.print("\n[bold]Historique Git[/bold]\n")
         self.ui.console.print(log_output)
+
+    def _handle_git_visualize(self, args):
+        """Affiche une visualisation avancée de l'historique Git"""
+        # Vérifier si nous avons accès au répertoire Git
+        if not self.git_manager.is_git_repo:
+            self.ui.print_error("Vous n'êtes pas dans un dépôt Git valide")
+            return
+            
+        # Configurer les options
+        max_count = args.git_log_count if hasattr(args, 'git_log_count') else 30
+        include_all = True  # Par défaut, on montre toutes les branches
+        include_stats = args.git_log_format == 'stats' if hasattr(args, 'git_log_format') else False
+        compact = False
+        
+        # Générer la visualisation
+        self.ui.print_info("Génération de la visualisation de l'historique Git...")
+        visualisation = self.git_manager.visualize_git_history(
+            max_count=max_count,
+            include_all_branches=include_all,
+            compact=compact,
+            include_stats=include_stats
+        )
+        
+        # Afficher le résultat
+        self.ui.console.print("\n[bold]Visualisation de l'historique Git[/bold]\n")
+        
+        # Afficher directement la sortie brute pour préserver la mise en forme
+        print(visualisation)
+        
+    def _handle_git_conflict_assist(self, args):
+        """Fournit une assistance pour résoudre les conflits de fusion"""
+        # Vérifier si nous avons accès au répertoire Git
+        if not self.git_manager.is_git_repo:
+            self.ui.print_error("Vous n'êtes pas dans un dépôt Git valide")
+            return
+            
+        # Obtenir la branche source à partir du fichier MERGE_HEAD
+        merge_head_path = os.path.join(self.git_manager.repo_path, '.git', 'MERGE_HEAD')
+        source_branch = "branche_source"  # Valeur par défaut
+        
+        if os.path.exists(merge_head_path):
+            try:
+                with open(merge_head_path, 'r') as f:
+                    merge_head = f.read().strip()
+                    
+                # Obtenir le nom de la branche à partir du hash
+                success, branch_output = self.git_manager._run_git_command(
+                    ['name-rev', '--name-only', merge_head]
+                )
+                if success and branch_output:
+                    source_branch = branch_output.replace('remotes/', '').split('~')[0]
+            except Exception as e:
+                self.ui.print_warning(f"Impossible de déterminer la branche source: {str(e)}")
+                
+        # Obtenir l'analyse des conflits
+        self.ui.print_info("Analyse des conflits de fusion en cours...")
+        conflict_analysis = self.git_manager.assist_merge_conflicts(source_branch)
+        
+        # Vérifier s'il y a une erreur
+        if "error" in conflict_analysis:
+            self.ui.print_error(conflict_analysis["error"])
+            return
+            
+        # Afficher le résumé des conflits
+        self.ui.console.print("\n[bold]Analyse des conflits de fusion[/bold]\n")
+        
+        self.ui.console.print(
+            f"[cyan]Fusion entre:[/cyan] {conflict_analysis['source_branch']} → "
+            f"{conflict_analysis['target_branch']}"
+        )
+        
+        conflict_count = conflict_analysis["conflict_files_count"]
+        self.ui.console.print(f"\n[yellow]Nombre de fichiers en conflit:[/yellow] {conflict_count}")
+        
+        # Afficher la liste des fichiers en conflit
+        if conflict_count > 0:
+            self.ui.console.print("\n[bold]Fichiers en conflit:[/bold]")
+            for file_path in conflict_analysis["conflict_files"]:
+                self.ui.console.print(f"  - {file_path}")
+                
+            # Afficher l'analyse détaillée pour chaque fichier
+            self.ui.console.print("\n[bold]Analyse détaillée:[/bold]")
+            for file_analysis in conflict_analysis["analysis"]:
+                file_path = file_analysis["file"]
+                conflicts_count = file_analysis["conflicts_count"]
+                
+                self.ui.console.print(f"\n[green]{file_path}[/green] ({conflicts_count} conflits)")
+                
+                for i, conflict in enumerate(file_analysis.get("conflicts", [])):
+                    conflict_type = conflict["type"]
+                    self.ui.console.print(f"  Conflit #{i+1} - Type: {conflict_type}")
+                    
+                    if conflict_type != "aucun_changement":
+                        self.ui.console.print("    [red]Version actuelle:[/red]")
+                        current_lines = conflict["current_version"].split("\n")
+                        for line in current_lines[:3]:  # Limiter l'affichage
+                            self.ui.console.print(f"      {line}")
+                        if len(current_lines) > 3:
+                            self.ui.console.print("      ...")
+                            
+                        self.ui.console.print("    [blue]Version entrante:[/blue]")
+                        incoming_lines = conflict["incoming_version"].split("\n")
+                        for line in incoming_lines[:3]:  # Limiter l'affichage
+                            self.ui.console.print(f"      {line}")
+                        if len(incoming_lines) > 3:
+                            self.ui.console.print("      ...")
+                            
+                        self.ui.console.print("    [green]Suggestion:[/green]")
+                        if "modification_majeure" in conflict_type:
+                            self.ui.console.print("      Conflit complexe nécessitant une résolution manuelle")
+                        else:
+                            suggested_lines = conflict["suggestion"].split("\n")
+                            for line in suggested_lines[:3]:  # Limiter l'affichage
+                                self.ui.console.print(f"      {line}")
+                            if len(suggested_lines) > 3:
+                                self.ui.console.print("      ...")
+            
+            # Afficher les commandes suggérées
+            self.ui.console.print("\n[bold]Commandes utiles:[/bold]")
+            for cmd in conflict_analysis["command_suggestions"]:
+                self.ui.console.print(f"  {cmd}")
+        
+    def _handle_git_retrospective(self, args):
+        """Génère une rétrospective basée sur l'activité Git récente"""
+        # Vérifier si nous avons accès au répertoire Git
+        if not self.git_manager.is_git_repo:
+            self.ui.print_error("Vous n'êtes pas dans un dépôt Git valide")
+            return
+            
+        # Obtenir la période (nombre de jours)
+        days = args.git_retrospective
+        
+        # Générer la rétrospective
+        self.ui.print_info(f"Génération de la rétrospective sur les {days} derniers jours...")
+        with self.ui.create_progress() as progress:
+            task = progress.add_task("Analyse de l'activité", total=None)
+            retrospective = self.git_manager.generate_sprint_retrospective(
+                days=days,
+                include_stats=True,
+                categorize=True
+            )
+            
+        # Vérifier s'il y a une erreur
+        if "error" in retrospective:
+            self.ui.print_error(retrospective["error"])
+            return
+            
+        # Afficher la rétrospective
+        self.ui.console.print("\n[bold]Rétrospective du projet[/bold]\n")
+        
+        # Période
+        period = retrospective["period"]
+        self.ui.console.print(
+            f"[cyan]Période:[/cyan] {period['start_date']} → {period['end_date']} "
+            f"({period['days']} jours)"
+        )
+        
+        # Résumé
+        summary = retrospective["summary"]
+        self.ui.console.print("\n[bold]Résumé de l'activité:[/bold]")
+        self.ui.console.print(f"  - Commits totaux: {summary['total_commits']}")
+        self.ui.console.print(f"  - Contributeurs actifs: {summary['active_authors']}")
+        self.ui.console.print(f"  - Commits par jour en moyenne: {summary['commits_per_day']}")
+        
+        # Catégories de commits
+        if "categories" in retrospective:
+            self.ui.console.print("\n[bold]Répartition par type:[/bold]")
+            categories = retrospective["categories"]
+            total = sum(categories.values())
+            
+            if total > 0:
+                for category, count in sorted(categories.items(), key=lambda x: x[1], reverse=True):
+                    percentage = round((count / total) * 100)
+                    bar = "█" * int(percentage / 5)
+                    self.ui.console.print(
+                        f"  - {category}: {count} ({percentage}%) {bar}"
+                    )
+        
+        # Contributeurs
+        authors = retrospective["authors"]
+        self.ui.console.print("\n[bold]Contributeurs:[/bold]")
+        for author, stats in sorted(
+            authors.items(), 
+            key=lambda x: x[1]["commit_count"], 
+            reverse=True
+        ):
+            self.ui.console.print(
+                f"  - {author}: {stats['commit_count']} commits "
+                f"(de {stats['first_commit_date']} à {stats['last_commit_date']})"
+            )
+            
+        # Statistiques des fichiers
+        if "file_stats" in retrospective:
+            file_stats = retrospective["file_stats"]
+            self.ui.console.print("\n[bold]Statistiques des fichiers:[/bold]")
+            self.ui.console.print(f"  - Fichiers modifiés: {file_stats['files_changed']}")
+            
+            if "most_changed_files" in file_stats and file_stats["most_changed_files"]:
+                self.ui.console.print("\n  [bold]Fichiers les plus modifiés:[/bold]")
+                for stat in file_stats["most_changed_files"]:
+                    self.ui.console.print(
+                        f"    - {stat['file']}: +{stat['additions']}/-{stat['deletions']}"
+                    )
+                    
+            if "summary" in file_stats and file_stats["summary"]:
+                self.ui.console.print(f"\n  [bold]Récapitulatif:[/bold] {file_stats['summary']}")
+                
+        # Commits récents
+        if "commits" in retrospective and retrospective["commits"]:
+            self.ui.console.print("\n[bold]Commits récents:[/bold]")
+            for commit in retrospective["commits"]:
+                self.ui.console.print(
+                    f"  - {commit['date']} [{commit['hash']}] {commit['message']} "
+                    f"({commit['author']})"
+                )
+                
+            if retrospective.get("has_more_commits", False):
+                self.ui.console.print("  ... et plus encore")
 
     async def _process_tui_tasks(self):
         """Traite les tâches asynchrones en attente pour le TUI"""
