@@ -1,7 +1,6 @@
 import os
 import re
-import json
-from typing import List, Dict, Any, Optional, Tuple, Union
+from typing import List, Dict, Any
 
 # Dictionnaire de correspondance entre extensions et langages
 LANGUAGE_EXTENSIONS = {
@@ -118,7 +117,7 @@ class FileInfo:
         """
         Génère un résumé des informations du fichier.
 
-        Returns:
+        Returns :
             Dictionnaire contenant les informations résumées
         """
         if self.content is None:

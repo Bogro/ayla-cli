@@ -4,7 +4,7 @@ import base64
 import hashlib
 import sys
 import getpass
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 class ApiKeySecurityManager:
@@ -34,15 +34,13 @@ class ApiKeySecurityManager:
     
     def _derive_key(self) -> bytes:
         """Dérive une clé de chiffrement à partir d'informations système"""
+
         # Utiliser une combinaison d'informations machine pour dériver une clé
-        system_info = []
         # Nom d'utilisateur
-        system_info.append(getpass.getuser().encode())
         # Répertoire personnel de l'utilisateur
-        system_info.append(os.path.expanduser("~").encode())
         # ID processus parent (pour rendre la clé légèrement plus difficile à deviner)
-        system_info.append(str(os.getppid()).encode())
-        
+        system_info = [getpass.getuser().encode(), os.path.expanduser("~").encode(), str(os.getppid()).encode()]
+
         # Utiliser ces informations pour dériver une clé
         concatenated = b"".join(system_info)
         salt = self._get_salt()
@@ -117,7 +115,7 @@ class AylaConfig:
         
         # Appliquer les bonnes permissions au répertoire de configuration
         if sys.platform != "win32":
-            os.chmod(self.CONFIG_DIR, 0o700)  # Droits restreints: lecture/écriture/exécution pour le propriétaire uniquement
+            os.chmod(self.CONFIG_DIR, 0o700)  # Droits restreints : lecture/écriture/exécution pour le propriétaire uniquement
 
     def load_config(self) -> Dict:
         """Charge la configuration depuis le fichier config.json"""
@@ -137,7 +135,7 @@ class AylaConfig:
             
         # Appliquer les bonnes permissions au fichier de configuration
         if sys.platform != "win32":
-            os.chmod(self.CONFIG_FILE, 0o600)  # Droits restreints: lecture/écriture pour le propriétaire uniquement
+            os.chmod(self.CONFIG_FILE, 0o600)  # Droits restreints : lecture/écriture pour le propriétaire uniquement
 
     def get(self, key: str, default=None) -> Any:
         """Récupère une valeur de configuration"""
@@ -153,7 +151,7 @@ class AylaConfig:
         self.save_config()
 
     def get_api_key(self, args) -> str:
-        """Récupère la clé API selon la priorité: args > env > config > user input"""
+        """Récupère la clé API selon la priorité : args > env > config > user input"""
         # Priorité 1 : Argument en ligne de commande
         if args.api_key:
             return args.api_key
@@ -163,7 +161,7 @@ class AylaConfig:
         if api_key:
             return api_key
 
-        # Priorité 3: Fichier de configuration (chiffré)
+        # Priorité 3 : Fichier de configuration (chiffré)
         encrypted_api_key = self.get("api_key")
         if encrypted_api_key:
             return self.key_manager.decrypt(encrypted_api_key)

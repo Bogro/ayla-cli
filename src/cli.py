@@ -11,6 +11,7 @@ from src.client import AnthropicClient
 from src.config import AylaConfig
 from src.conversation import ConversationManager
 from src.file_manager import FileManager
+from src.git_manager import GitManager
 from src.interactive import InteractiveMode
 from src.setup import AylaSetupAssistant
 from src.streamer import ResponseStreamer
@@ -38,6 +39,7 @@ class AylaCli:
         self.conv_manager = ConversationManager(self.config, self.ui)
         self.file_manager = FileManager(self.ui)
         self.streamer = ResponseStreamer(self.ui)
+        self.git_manager = GitManager(self.ui)
 
         # Initialiser le gestionnaire d'analyse de code si disponible
         if self.code_analysis_available:
