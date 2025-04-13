@@ -158,6 +158,22 @@ class AylaCli:
                               help="Commit les changements avec un message intelligent et pousse vers le remote")
         git_group.add_argument("--git-conventional-commit", action="store_true",
                               help="Génère un message de commit au format Conventional Commits")
+        git_group.add_argument("--git-stash", action="store", nargs="?", const="", metavar="NOM", 
+                              help="Crée un stash des modifications courantes avec un nom optionnel")
+        git_group.add_argument("--git-stash-apply", action="store_true",
+                              help="Applique le dernier stash créé")
+        git_group.add_argument("--git-merge", action="store", metavar="BRANCHE",
+                              help="Fusionne la branche spécifiée dans la branche courante")
+        git_group.add_argument("--git-merge-squash", action="store", metavar="BRANCHE",
+                              help="Fusionne la branche spécifiée en un seul commit")
+        git_group.add_argument("--git-log", action="store_true",
+                              help="Affiche un historique Git amélioré")
+        git_group.add_argument("--git-log-format", choices=["default", "detailed", "summary", "stats", "full"],
+                              default="default", help="Format d'affichage pour git-log")
+        git_group.add_argument("--git-log-count", type=int, default=10,
+                              help="Nombre de commits à afficher dans le log")
+        git_group.add_argument("--git-log-graph", action="store_true",
+                              help="Affiche le log avec un graphe des branches")
 
         return parser
 
@@ -1078,6 +1094,57 @@ class AylaCli:
                 return "Génération du nom de branche en cours..."
             except Exception as e:
                 return f"Erreur lors de la génération du nom de branche: {str(e)}"
+        elif command == '/git-stash':
+            if not args:
+                return "Erreur: Veuillez spécifier un nom pour le stash"
+            
+            stash_name = args.strip()
+            success = self.git_manager.stash_changes(name=stash_name if stash_name else None)
+            
+            if success:
+                self.ui.print_success("Stash créé avec succès")
+            else:
+                self.ui.print_error("Erreur lors de la création du stash")
+        elif command == '/git-stash-apply':
+            success = self.git_manager.stash_changes(apply_immediately=True)
+            
+            if not success:
+                self.ui.print_error("Erreur lors de l'application du stash")
+        elif command == '/git-merge':
+            if not args:
+                return "Erreur: Veuillez spécifier une branche à fusionner"
+            
+            source_branch = args.strip()
+            success = self.git_manager.merge_branch(source_branch, squash=False)
+            
+            if success:
+                self.ui.print_success(f"Branche '{source_branch}' fusionnée avec succès")
+            else:
+                self.ui.print_error("Erreur lors de la fusion de la branche")
+        elif command == '/git-merge-squash':
+            if not args:
+                return "Erreur: Veuillez spécifier une branche à fusionner"
+            
+            source_branch = args.strip()
+            success = self.git_manager.merge_branch(source_branch, squash=True)
+            
+            if success:
+                self.ui.print_success(f"Branche '{source_branch}' fusionnée et squashée avec succès")
+            else:
+                self.ui.print_error("Erreur lors de la fusion et squashing de la branche")
+        elif command == '/git-log':
+            format_type = args.git_log_format
+            count = args.git_log_count
+            show_graph = args.git_log_graph
+            
+            log_output = self.git_manager.get_enhanced_log(
+                format_type=format_type,
+                count=count,
+                show_graph=show_graph
+            )
+            
+            self.ui.console.print("\n[bold]Historique Git[/bold]\n")
+            self.ui.console.print(log_output)
         else:
             return f"Commande {command} non reconnue ou non implémentée."
 
@@ -1188,7 +1255,12 @@ class AylaCli:
             hasattr(args, 'git_diff_analyze') and args.git_diff_analyze,
             hasattr(args, 'git_create_branch') and args.git_create_branch,
             hasattr(args, 'git_commit_and_push') and args.git_commit_and_push,
-            hasattr(args, 'git_conventional_commit') and args.git_conventional_commit
+            hasattr(args, 'git_conventional_commit') and args.git_conventional_commit,
+            hasattr(args, 'git_stash') and args.git_stash is not None,
+            hasattr(args, 'git_stash_apply') and args.git_stash_apply,
+            hasattr(args, 'git_merge') and args.git_merge,
+            hasattr(args, 'git_merge_squash') and args.git_merge_squash,
+            hasattr(args, 'git_log') and args.git_log
         ])
         
         if not has_git_command:
@@ -1237,6 +1309,31 @@ class AylaCli:
         # Traiter la commande git-conventional-commit
         if hasattr(args, 'git_conventional_commit') and args.git_conventional_commit:
             await self._handle_git_conventional_commit(args)
+            return True
+            
+        # Traiter la commande git-stash
+        if hasattr(args, 'git_stash') and args.git_stash is not None:
+            self._handle_git_stash(args)
+            return True
+            
+        # Traiter la commande git-stash-apply
+        if hasattr(args, 'git_stash_apply') and args.git_stash_apply:
+            self._handle_git_stash_apply(args)
+            return True
+            
+        # Traiter la commande git-merge
+        if hasattr(args, 'git_merge') and args.git_merge:
+            self._handle_git_merge(args, squash=False)
+            return True
+            
+        # Traiter la commande git-merge-squash
+        if hasattr(args, 'git_merge_squash') and args.git_merge_squash:
+            self._handle_git_merge(args, squash=True)
+            return True
+            
+        # Traiter la commande git-log
+        if hasattr(args, 'git_log') and args.git_log:
+            self._handle_git_log(args)
             return True
             
         return False
@@ -1562,6 +1659,66 @@ class AylaCli:
             success = self.git_manager.commit_changes(commit_message)
             if success:
                 self.ui.print_success("Commit créé avec succès")
+
+    def _handle_git_stash(self, args):
+        """Crée un stash des modifications courantes"""
+        stash_name = args.git_stash
+        success = self.git_manager.stash_changes(name=stash_name if stash_name else None)
+        
+        if success:
+            self.ui.print_success("Stash créé avec succès")
+        
+    def _handle_git_stash_apply(self, args):
+        """Applique le dernier stash créé"""
+        # Pour simplifier, on va créer un stash et l'appliquer immédiatement
+        success = self.git_manager.stash_changes(apply_immediately=True)
+        
+        if not success:
+            self.ui.print_error("Erreur lors de l'application du stash")
+            
+    def _handle_git_merge(self, args, squash=False):
+        """Fusionne la branche spécifiée dans la branche courante"""
+        source_branch = args.git_merge if not squash else args.git_merge_squash
+        
+        if not source_branch:
+            self.ui.print_error("Veuillez spécifier une branche source à fusionner")
+            return
+            
+        # Demander confirmation pour la fusion
+        if args.interactive:
+            target_branch = self.git_manager.current_branch
+            action = "fusionner et squasher" if squash else "fusionner"
+            confirm = self.ui.get_input(
+                f"Voulez-vous {action} la branche '{source_branch}' dans '{target_branch}'? (o/n): "
+            ).lower()
+            
+            if confirm not in ('o', 'oui'):
+                self.ui.print_info("Fusion annulée par l'utilisateur")
+                return
+                
+        # Exécuter la fusion
+        success = self.git_manager.merge_branch(source_branch, squash=squash)
+        
+        if success:
+            action = "fusionnée et squasher" if squash else "fusionnée"
+            self.ui.print_success(f"Branche '{source_branch}' {action} avec succès")
+            
+    def _handle_git_log(self, args):
+        """Affiche un historique Git amélioré"""
+        format_type = args.git_log_format
+        count = args.git_log_count
+        show_graph = args.git_log_graph
+        
+        # Récupérer et afficher le log
+        log_output = self.git_manager.get_enhanced_log(
+            format_type=format_type,
+            count=count,
+            show_graph=show_graph
+        )
+        
+        # Afficher le résultat
+        self.ui.console.print("\n[bold]Historique Git[/bold]\n")
+        self.ui.console.print(log_output)
 
     async def _process_tui_tasks(self):
         """Traite les tâches asynchrones en attente pour le TUI"""

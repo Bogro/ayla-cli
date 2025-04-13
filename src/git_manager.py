@@ -766,4 +766,138 @@ Voici le diff :
         except Exception as e:
             self.ui.print_warning(f"Erreur lors de la génération du message conventionnel: {str(e)}")
             # Fallback sur le générateur simple
-            return "chore: " + self.generate_commit_message(diff_text) 
+            return "chore: " + self.generate_commit_message(diff_text)
+
+    def stash_changes(self, name: Optional[str] = None, apply_immediately: bool = False) -> bool:
+        """Crée un stash des modifications courantes avec un nom personnalisé et option pour l'appliquer immédiatement"""
+        if not self.is_git_repo:
+            self.ui.print_error("Vous n'êtes pas dans un dépôt Git valide")
+            return False
+            
+        # Vérifier s'il y a des changements à stasher
+        status = self._get_repo_status()
+        if status['is_clean']:
+            self.ui.print_warning("Aucun changement à stasher")
+            return False
+        
+        # Commande pour créer le stash
+        command = ['stash', 'push']
+        if name:
+            command.extend(['-m', name])
+            
+        success, output = self._run_git_command(command)
+        
+        if not success:
+            self.ui.print_error(f"Erreur lors de la création du stash: {output}")
+            return False
+            
+        self.ui.print_success(f"Stash créé avec succès: {output}")
+        
+        # Si demandé, appliquer immédiatement le stash
+        if apply_immediately:
+            success, apply_output = self._run_git_command(['stash', 'apply', 'stash@{0}'])
+            if success:
+                self.ui.print_success("Stash appliqué avec succès")
+            else:
+                self.ui.print_error(f"Erreur lors de l'application du stash: {apply_output}")
+                return False
+        
+        self.refresh_repo_info()
+        return True
+        
+    def merge_branch(self, source_branch: str, strategy: str = 'default', 
+                   no_commit: bool = False, squash: bool = False) -> bool:
+        """Fusionne une branche dans la branche courante avec options avancées"""
+        if not self.is_git_repo:
+            self.ui.print_error("Vous n'êtes pas dans un dépôt Git valide")
+            return False
+            
+        # Vérifier que la branche source existe
+        branches = self._get_branches()
+        if source_branch not in branches:
+            self.ui.print_error(f"La branche {source_branch} n'existe pas")
+            return False
+            
+        # Construire la commande de fusion
+        command = ['merge']
+        
+        # Ajouter les options
+        if strategy != 'default':
+            if strategy in ['recursive', 'resolve', 'octopus', 'ours', 'subtree']:
+                command.extend([f'--strategy={strategy}'])
+            else:
+                self.ui.print_warning(
+                    f"Stratégie {strategy} non reconnue, utilisation de la stratégie par défaut"
+                )
+        
+        if no_commit:
+            command.append('--no-commit')
+            
+        if squash:
+            command.append('--squash')
+            
+        # Ajouter la branche source
+        command.append(source_branch)
+        
+        # Exécuter la commande
+        success, output = self._run_git_command(command)
+        
+        if success:
+            self.ui.print_success(
+                f"Fusion de {source_branch} dans {self.current_branch} réussie"
+            )
+            self.refresh_repo_info()
+            return True
+        else:
+            self.ui.print_error(f"Erreur lors de la fusion: {output}")
+            # Vérifier s'il s'agit d'un conflit
+            if "Automatic merge failed" in output or "CONFLICT" in output:
+                self.ui.print_warning(
+                    "Des conflits ont été détectés. Vous devez les résoudre manuellement."
+                )
+            return False
+
+    def get_enhanced_log(
+        self, format_type: str = 'default', count: int = 10, 
+        show_graph: bool = False, filter_author: Optional[str] = None
+    ) -> str:
+        """Affiche un historique Git amélioré avec différents formats et filtres"""
+        if not self.is_git_repo:
+            return "Vous n'êtes pas dans un dépôt Git valide"
+        
+        # Définir les formats disponibles
+        formats = {
+            'default': '--pretty=format:"%C(auto)%h %C(blue)%ad%C(auto)%d %C(reset)%s '
+                      '%C(dim green)[%an]" --date=short',
+            'detailed': '--pretty=format:"%C(auto)%h %C(blue)%ad%C(auto)%d %C(reset)%s '
+                       '%C(dim green)[%an <%ae>]" --date=iso',
+            'summary': '--pretty=format:"%C(auto)%h %C(reset)%s" --date=short',
+            'stats': '--stat',
+            'full': '--pretty=full',
+        }
+        
+        # Sélectionner le format
+        log_format = formats.get(format_type, formats['default'])
+        
+        # Construire la commande
+        command = ['log', f'-{count}']
+        
+        # Ajouter le format
+        for fmt in log_format.split():
+            command.append(fmt)
+        
+        # Ajouter le graphe si demandé
+        if show_graph:
+            command.append('--graph')
+            
+        # Filtrer par auteur si spécifié
+        if filter_author:
+            command.append(f'--author={filter_author}')
+        
+        # Exécuter la commande
+        success, output = self._run_git_command(command)
+        
+        if success:
+            return output or "Aucun commit trouvé avec ces critères"
+        else:
+            return f"Erreur lors de la récupération du log: {output}" 

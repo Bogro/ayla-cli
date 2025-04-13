@@ -14,6 +14,7 @@ Une interface en ligne de commande avancé, vous permettant d'interagir avec les
 - **Recherche** dans votre historique de conversations
 - **Bibliothèque de modèles** avec accès à Claude 3 Opus, Claude 3.7 Sonnet, Claude 3.5 Haiku, etc.
 - **Traitement de fichiers** pour inclure le contenu de fichiers dans vos prompts
+- **Intégration Git avancée** pour faciliter la gestion de vos dépôts
 - **Mode debug** pour les développeurs
 
 ## Installation
@@ -136,6 +137,85 @@ ayla -d "Pourquoi la réponse ne s'affiche pas correctement?"
 # Augmenter le timeout pour les requêtes complexes
 ayla --timeout 180 "Analyse détaillée de ce texte très long"
 ```
+
+## Fonctionnalités Git
+
+Ayla CLI fournit des fonctionnalités avancées pour gérer vos dépôts Git avec l'aide de Claude :
+
+### Messages de commit intelligents
+
+```bash
+# Génère un message de commit intelligent basé sur vos changements
+ayla --git-commit
+
+# Format Conventional Commits
+ayla --git-conventional-commit
+
+# Commit et push automatique
+ayla --git-commit-and-push
+```
+
+### Gestion de branches
+
+```bash
+# Suggère un nom de branche basé sur une description
+ayla --git-branch "Implémentation de l'authentification à deux facteurs"
+
+# Crée une branche avec un nom intelligent
+ayla --git-create-branch "Ajouter support pour notifications push"
+
+# Fusionne une branche dans la branche courante
+ayla --git-merge feature/auth-system
+
+# Fusionne une branche en un seul commit (squash)
+ayla --git-merge-squash bugfix/login-fix
+```
+
+### Analyse de code
+
+```bash
+# Analyse du dépôt Git et insights
+ayla --git-analyze
+
+# Analyse détaillée des changements
+ayla --git-diff-analyze
+```
+
+### Stash et log améliorés
+
+```bash
+# Crée un stash avec un nom personnalisé
+ayla --git-stash "Modifications temporaires de l'UI"
+
+# Applique le dernier stash
+ayla --git-stash-apply
+
+# Affiche un log Git amélioré
+ayla --git-log
+
+# Log avec différents formats
+ayla --git-log --git-log-format detailed --git-log-count 20 --git-log-graph
+```
+
+### Commandes interactives Git
+
+En mode interactif, vous pouvez également utiliser ces commandes :
+
+| Commande | Description |
+|----------|-------------|
+| `/git-status` | Affiche le statut du dépôt |
+| `/git-commit` | Génère un message de commit intelligent |
+| `/git-branch <description>` | Suggère un nom de branche |
+| `/git-analyze` | Analyse le dépôt Git |
+| `/git-diff` | Analyse des changements courants |
+| `/git-conventional` | Génère un commit Conventional Commits |
+| `/git-push [remote] [branche]` | Pousse les changements |
+| `/git-pull [remote] [branche]` | Récupère les changements |
+| `/git-stash [nom]` | Crée un stash des modifications |
+| `/git-stash-apply` | Applique le dernier stash |
+| `/git-merge <branche>` | Fusionne une branche |
+| `/git-merge-squash <branche>` | Fusionne avec squash |
+| `/git-log [format] [nombre] [graph]` | Affiche un log amélioré |
 
 ## Dépannage
 

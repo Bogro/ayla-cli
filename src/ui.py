@@ -368,6 +368,25 @@ class TUIManager:
             "/git-pull": {
                 "args": ["[remote]", "[branche]"],
                 "help": "Tire les changements depuis le dépôt distant"
+            },
+            "/git-stash": {
+                "args": ["[nom]"],
+                "help": "Crée un stash des modifications courantes avec un nom optionnel"
+            },
+            "/git-stash-apply": {
+                "help": "Applique le dernier stash créé"
+            },
+            "/git-merge": {
+                "args": ["<branche>"],
+                "help": "Fusionne la branche spécifiée dans la branche courante"
+            },
+            "/git-merge-squash": {
+                "args": ["<branche>"],
+                "help": "Fusionne la branche spécifiée en un seul commit"
+            },
+            "/git-log": {
+                "args": ["[format]", "[nombre]", "[graph]"],
+                "help": "Affiche un historique Git amélioré avec différentes options de format"
             }
         }
         
