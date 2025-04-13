@@ -16,12 +16,13 @@ try:
     from rich.progress import Progress, SpinnerColumn, TextColumn
     from rich.theme import Theme
     from rich import box
+    import nest_asyncio
 except ImportError:
     print("Installation des dépendances requises...")
     import subprocess
 
     subprocess.check_call([sys.executable, "-m", "pip", "install",
-                           "anthropic", "rich"])
+                           "anthropic", "rich", "nest_asyncio"])
     from anthropic import Anthropic, RateLimitError, APIStatusError, APIConnectionError, APIError
     from rich.console import Console
     from rich.markdown import Markdown
@@ -30,6 +31,7 @@ except ImportError:
     from rich.progress import Progress, SpinnerColumn, TextColumn
     from rich.theme import Theme
     from rich import box
+    import nest_asyncio
 
 
 async def main():

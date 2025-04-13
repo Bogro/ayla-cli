@@ -2,7 +2,9 @@ import os
 import sys
 
 from rich.panel import Panel
+from rich.prompt import Confirm, Prompt
 
+from src.code_analysis import ProjectAnalyzer
 from src.config import AylaConfig
 from src.ui import UI
 
@@ -90,6 +92,38 @@ class AylaSetupAssistant:
                 self.ui.print_info("Vous pouvez ajouter manuellement l'alias suivant à votre .bashrc:")
                 self.ui.console.print(f"[code]{alias_line}[/code]")
 
+    def _setup_project_analyzer_config(self):
+        """Configure les options d'analyse de projet"""
+        self.ui.console.print("\n[bold]Configuration de l'analyseur de projet[/bold]")
+
+        config_data = self.config.load_config()
+
+        # Afficher les exclusions actuelles
+        excluded_dirs = config_data.get("excluded_dirs", ProjectAnalyzer.DEFAULT_EXCLUDED_DIRS)
+        excluded_files = config_data.get("excluded_files", ProjectAnalyzer.DEFAULT_EXCLUDED_FILES)
+
+        self.ui.console.print(f"Répertoires exclus actuels: [cyan]{', '.join(excluded_dirs)}[/cyan]")
+        self.ui.console.print(f"Fichiers exclus actuels: [cyan]{', '.join(excluded_files)}[/cyan]")
+
+        # Demander si l'utilisateur souhaite modifier les exclusions
+        if Confirm.ask("Souhaitez-vous modifier les répertoires exclus?"):
+            new_dirs = Prompt.ask(
+                "Entrez les répertoires à exclure (séparés par des virgules)",
+                default=", ".join(excluded_dirs)
+            )
+            excluded_dirs = [d.strip() for d in new_dirs.split(',')]
+            self.config.set("excluded_dirs", excluded_dirs)
+
+        if Confirm.ask("Souhaitez-vous modifier les fichiers exclus?"):
+            new_files = Prompt.ask(
+                "Entrez les fichiers à exclure (séparés par des virgules)",
+                default=", ".join(excluded_files)
+            )
+            excluded_files = [f.strip() for f in new_files.split(',')]
+            self.config.set("excluded_files", excluded_files)
+
+        self.ui.console.print("[success]Configuration de l'analyseur de projet sauvegardée.[/success]")
+
     async def setup(self):
         """Lance l'assistant de configuration"""
         self.ui.console.print(Panel.fit(
@@ -147,6 +181,7 @@ class AylaSetupAssistant:
 
         # Configuration des paramètres par défaut
         self._configure_parameters()
+        self._setup_project_analyzer_config()
 
         # Sauvegarder la configuration
         self.config.save_config()
