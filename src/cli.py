@@ -151,7 +151,7 @@ class AylaCli:
         git_group.add_argument("--git-analyze", action="store_true",
                               help="Analyse le dépôt Git et fournit des insights")
         git_group.add_argument("--git-diff-analyze", action="store_true",
-                              help="Analyse détaillée des changements actuels avec Claude")
+                              help="Analyse détaillée des changements actuels")
         git_group.add_argument("--git-create-branch", action="store_true",
                               help="Crée une nouvelle branche avec un nom intelligent")
         git_group.add_argument("--git-commit-and-push", action="store_true",
@@ -1372,7 +1372,7 @@ class AylaCli:
         self.ui.console.print()
         
     async def _handle_git_diff_analyze(self, args):
-        """Analyse détaillée des changements actuels avec Claude"""
+        """Analyse détaillée des changements actuels"""
         # Obtenir le diff des changements
         diff_text = self.git_manager.get_detailed_diff()
         

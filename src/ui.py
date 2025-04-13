@@ -306,7 +306,7 @@ class TUIManager:
             "/git-commit": "Génère un message de commit intelligent pour les changements",
             "/git-branch": "Suggère un nom de branche intelligent - /git-branch <description>",
             "/git-analyze": "Analyse le dépôt Git et fournit des insights",
-            "/git-diff": "Analyse détaillée des changements actuels avec Claude",
+            "/git-diff": "Analyse détaillée des changements actuels",
             "/git-conventional": "Génère un message de commit au format Conventional Commits",
         }
 
@@ -356,7 +356,7 @@ class TUIManager:
                 "help": "Analyse le dépôt Git et fournit des insights sur son état et son histoire"
             },
             "/git-diff": {
-                "help": "Analyse détaillée des changements actuels avec Claude"
+                "help": "Analyse détaillée des changements actuels"
             },
             "/git-conventional": {
                 "help": "Génère un message de commit au format Conventional Commits"
@@ -505,7 +505,7 @@ class TUIManager:
                 help_text.append("Commande inconnue")
         else:
             # Aide pour le mode question
-            help_text.append("Mode question: votre message sera envoyé à Claude")
+            # help_text.append("Mode question: votre message sera envoyé à Claude")
             help_text.append("Utilisez / pour entrer une commande")
 
         # Afficher l'aide limitée à la hauteur de la fenêtre
@@ -688,8 +688,8 @@ class TUIManager:
                 pass
 
     def _process_question(self, question):
-        """Traite une question à envoyer à Claude"""
-        self._add_to_output("Envoi de votre message à Claude...", color=3)
+        """Traite une question à envoyer"""
+        self._add_to_output("Ayla réfléchit...", color=3)
 
         # Simuler une réponse asynchrone
         if self.app_context:
@@ -701,15 +701,15 @@ class TUIManager:
             thread.daemon = True
             thread.start()
         else:
-            self._add_to_output("Mode simulation: Pas de connexion à Claude", color=3)
+            self._add_to_output("Mode simulation: Pas de connexion", color=3)
             self._add_to_output("Voici une réponse simulée pour votre question.", color=1)
 
     def _async_question_handler(self, question):
-        """Gère l'envoi asynchrone de la question à Claude"""
+        """Gère l'envoi asynchrone de la question"""
         try:
             # Afficher un message d'attente
-            self._add_to_output("Envoi de votre question à Claude...", color=3)
-            self._add_to_output("En attente de réponse...", color=3)
+            # self._add_to_output("Envoi de votre question à Claude...", color=3)
+            self._add_to_output("Ayla réfléchit...", color=3)
 
             # Vérifier que app_context existe
             if not self.app_context:
@@ -760,7 +760,7 @@ class TUIManager:
                         time.sleep(0.5)
             else:
                 # Réponse assez courte, l'afficher directement
-                self._add_to_output("Réponse de Claude:", color=1)
+                self._add_to_output("Ayla :", color=1)
                 self._add_to_output(response)
 
             # Force refresh de l'interface
@@ -772,7 +772,7 @@ class TUIManager:
 
         except Exception as e:
             # En cas d'erreur, l'afficher
-            error_message = f"Erreur lors de la communication avec Claude: {str(e)}"
+            error_message = f"Erreur lors de la communication: {str(e)}"
             self._add_to_output(error_message, color=4)
 
             # Fournir des informations supplémentaires selon le type d'erreur
@@ -869,17 +869,17 @@ class TUIManager:
         for cmd, desc in sorted(self.available_commands.items()):
             self._add_to_output(f"  {cmd:<15} : {desc}")
 
-        # Interactions avec Claude
-        self._add_to_output("\n[Interagir avec Claude]", color=2)
+        # Interactions
+        self._add_to_output("\n[Interactions]", color=2)
         self._add_to_output("  1. Posez vos questions directement en les tapant (sans '/')")
-        self._add_to_output("  2. Appuyez sur Entrée pour envoyer votre message à Claude")
+        self._add_to_output("  2. Appuyez sur Entrée pour envoyer votre message")
         self._add_to_output("  3. Attendez la réponse (elle s'affichera automatiquement)")
         self._add_to_output("  4. Pour les réponses longues, elles seront affichées en plusieurs parties")
 
         # Exemples
         self._add_to_output("\n[Exemples d'utilisation]", color=2)
         self._add_to_output("  > Comment fonctionne la récursivité en Python?")
-        self._add_to_output("     → Pose une question directe à Claude")
+        self._add_to_output("     → Pose une question directe")
         self._add_to_output("  > /analyze main.py")
         self._add_to_output("     → Analyse le fichier main.py")
         self._add_to_output("  > /list")
@@ -896,7 +896,7 @@ class TUIManager:
 
         # Informations
         self._add_to_output("\n[À propos]", color=2)
-        self._add_to_output("  Ayla CLI - Interface en ligne de commande pour Claude")
+        self._add_to_output("  Ayla CLI - Interface en ligne de commande")
         self._add_to_output("  Version: 1.0.0")
         self._add_to_output("  Mode TUI: Interface utilisateur textuelle")
 
