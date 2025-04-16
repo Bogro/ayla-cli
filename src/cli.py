@@ -40,10 +40,8 @@ class AylaCli:
         # Vérifier si l'analyse de code est disponible
         self.code_analysis_available = True
         try:
-            # Juste vérifier si le module est disponible
-            import importlib.util
-            if not importlib.util.find_spec("tree_sitter"):
-                self.code_analysis_available = False
+            import tree_sitter
+            self.code_analysis_available = True
         except ImportError:
             self.code_analysis_available = False
 
@@ -115,8 +113,9 @@ class AylaCli:
 
     def _setup_argparse(self):
         """Configure le parseur d'arguments"""
+        desc = "Ayla CLI - Interface en ligne de commande pour une IA"
         parser = argparse.ArgumentParser(
-            description="Ayla CLI - Interface en ligne de commande pour une intéraction avec une IA",
+            description=desc,
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog=textwrap.dedent("""
             Exemples d'utilisation:
@@ -124,131 +123,294 @@ class AylaCli:
               ayla -f moncode.py "Explique ce code"
               cat fichier.txt | ayla "Résume ce texte"
               ayla -i                      # Mode interactif
-              ayla -c abc123               # Continuer une conversation existante
+              ayla -c abc123               # Continuer une conversation
               ayla --list                  # Lister les conversations
               ayla --setup                 # Configurer l'outil
-              ayla --analyze moncode.py    # Analyser un fichier de code
-              ayla --document moncode.py   # Générer de la documentation
-              ayla --project ./monprojet   # Analyser un projet entier
-              ayla --patterns-analyze moncode.py    # Analyser les design patterns dans un fichier
-              ayla --project-patterns ./monprojet   # Analyser les design patterns d'un projet
             """)
         )
 
         # Arguments principaux
-        parser.add_argument("prompt", nargs="*", help="Votre question ou demande pour Ayla")
+        parser.add_argument("prompt", nargs="*", help="Question ou demande")
 
         # Options du modèle et de l'API
         api_group = parser.add_argument_group('Options API')
-        api_group.add_argument("--api-key",
-                               help="Clé API Anthropic (sinon utilise ANTHROPIC_API_KEY ou la configuration)")
-        api_group.add_argument("--model", "-m", default=self.config.DEFAULT_MODEL,
-                               help=f"Modèle Ayla à utiliser (défaut: {self.config.DEFAULT_MODEL})")
-        api_group.add_argument("--max-tokens", "-t", type=int, default=self.config.DEFAULT_MAX_TOKENS,
-                               help=f"Nombre maximum de tokens pour la réponse (défaut: {self.config.DEFAULT_MAX_TOKENS})")
-        api_group.add_argument("--temperature", "-T", type=float, default=self.config.DEFAULT_TEMPERATURE,
-                               help=f"Température pour la génération (0.0-1.0, défaut: {self.config.DEFAULT_TEMPERATURE})")
-        api_group.add_argument("--timeout", type=int, default=120,
-                               help=f"Délai d'attente pour les requêtes API en secondes (défaut: 120)")
+        api_group.add_argument(
+            "--api-key",
+            help="Clé API Anthropic"
+        )
+        api_group.add_argument(
+            "--model", "-m",
+            default=self.config.DEFAULT_MODEL,
+            help="Modèle à utiliser"
+        )
+        api_group.add_argument(
+            "--max-tokens", "-t",
+            type=int,
+            default=self.config.DEFAULT_MAX_TOKENS,
+            help="Nombre maximum de tokens"
+        )
+        api_group.add_argument(
+            "--temperature", "-T",
+            type=float,
+            default=self.config.DEFAULT_TEMPERATURE,
+            help="Température (0.0-1.0)"
+        )
+        api_group.add_argument(
+            "--timeout",
+            type=int,
+            default=120,
+            help="Délai d'attente en secondes"
+        )
 
         # Options d'entrée/sortie
-        io_group = parser.add_argument_group('Options d\'entrée/sortie')
-        io_group.add_argument("--file", "-f", action='append', help="Chemin vers un fichier à inclure dans la requête")
-        io_group.add_argument("--stream", "-s", action="store_true", help="Afficher la réponse en streaming")
-        io_group.add_argument("--raw", "-r", action="store_true", help="Afficher la réponse brute sans formatage")
-        io_group.add_argument("--debug", "-d", action="store_true", help="Mode débogage pour le streaming")
-        io_group.add_argument("--output", "-o", help="Chemin vers un fichier pour sauvegarder la réponse")
-        io_group.add_argument("--auto-save", action="store_true", help="Sauvegarder automatiquement les réponses")
+        io_group = parser.add_argument_group('Options E/S')
+        io_group.add_argument(
+            "--file", "-f",
+            action='append',
+            help="Fichier à inclure"
+        )
+        io_group.add_argument(
+            "--stream", "-s",
+            action="store_true",
+            help="Afficher en streaming"
+        )
+        io_group.add_argument(
+            "--raw", "-r",
+            action="store_true",
+            help="Sortie brute"
+        )
+        io_group.add_argument(
+            "--debug", "-d",
+            action="store_true",
+            help="Mode débogage"
+        )
+        io_group.add_argument(
+            "--output", "-o",
+            help="Fichier de sortie"
+        )
+        io_group.add_argument(
+            "--auto-save",
+            action="store_true",
+            help="Sauvegarde auto"
+        )
 
         # Options de conversation
-        conv_group = parser.add_argument_group('Options de conversation')
-        conv_group.add_argument("--interactive", "-i", action="store_true", help="Mode interactif")
-        conv_group.add_argument("--conversation-id", "-c", help="ID de conversation pour sauvegarder l'historique")
-        conv_group.add_argument("--continue", dest="continue_conversation", action="store_true",
-                                help="Continuer la dernière conversation")
+        conv_group = parser.add_argument_group('Conversation')
+        conv_group.add_argument(
+            "--interactive", "-i",
+            action="store_true",
+            help="Mode interactif"
+        )
+        conv_group.add_argument(
+            "--conversation-id", "-c",
+            help="ID de conversation"
+        )
+        conv_group.add_argument(
+            "--continue",
+            dest="continue_conversation",
+            action="store_true",
+            help="Continuer conversation"
+        )
 
-        # ui_group = parser.add_argument_group('Options d\'interface')
-        # ui_group.add_argument("--tui", action="store_true",
-        #                       help="Lancer en mode TUI (Text User Interface) avec curseur")
+        # Options pour l'analyse de code
+        code_group = parser.add_argument_group('Analyse de code')
+        code_group.add_argument(
+            "--analyze",
+            metavar="FILE",
+            help="Analyser un fichier"
+        )
+        code_group.add_argument(
+            "--analysis-type",
+            choices=['general', 'security', 'performance', 'style'],
+            default='general',
+            help="Type d'analyse"
+        )
+        code_group.add_argument(
+            "--document",
+            metavar="FILE",
+            help="Générer documentation"
+        )
+        code_group.add_argument(
+            "--doc-type",
+            choices=['complete', 'api', 'usage'],
+            default='complete',
+            help="Type de doc"
+        )
+        code_group.add_argument(
+            "--doc-format",
+            choices=['markdown', 'html', 'rst'],
+            default='markdown',
+            help="Format de doc"
+        )
+        code_group.add_argument(
+            "--project",
+            metavar="DIR",
+            help="Analyser projet"
+        )
+        code_group.add_argument(
+            "--extensions",
+            help="Extensions (.py,.js)"
+        )
+        code_group.add_argument(
+            "--exclude-dirs",
+            help="Répertoires exclus"
+        )
+        code_group.add_argument(
+            "--exclude-files",
+            help="Fichiers exclus"
+        )
+        code_group.add_argument(
+            "--no-default-excludes",
+            action="store_true",
+            help="Sans exclusions"
+        )
+        code_group.add_argument(
+            "--output-dir",
+            help="Dossier de sortie"
+        )
 
-        # Options pour l'analyse de code (si le module est disponible)
-        if self.code_analysis_available:
-            code_group = parser.add_argument_group('Analyse de code')
-            code_group.add_argument("--analyze", metavar="FILE", help="Analyser un fichier de code")
-            code_group.add_argument("--analysis-type", choices=['general', 'security', 'performance', 'style'],
-                                    default='general', help="Type d'analyse de code")
-            code_group.add_argument("--document", metavar="FILE",
-                                    help="Générer de la documentation pour un fichier de code")
-            code_group.add_argument("--doc-type", choices=['complete', 'api', 'usage'],
-                                    default='complete', help="Type de documentation")
-            code_group.add_argument("--doc-format", choices=['markdown', 'html', 'rst'],
-                                    default='markdown', help="Format de la documentation")
-            code_group.add_argument("--project", metavar="DIR", help="Analyser un projet entier")
-            code_group.add_argument("--extensions", help="Extensions de fichiers à inclure (ex: .py,.js)")
-            code_group.add_argument("--exclude-dirs",
-                                    help="Répertoires à exclure de l'analyse (séparés par des virgules)")
-            code_group.add_argument("--exclude-files",
-                                    help="Fichiers à exclure de l'analyse (séparés par des virgules)")
-            code_group.add_argument("--no-default-excludes", action="store_true",
-                                    help="Ne pas utiliser les exclusions par défaut")
-            code_group.add_argument("--output-dir",
-                                    help="Dossier où sauvegarder les analyses (défaut: ~/ayla_analyses)")
-
-            # Options pour l'analyse de patterns
-            pattern_group = parser.add_argument_group('Analyse de patterns')
-            pattern_group.add_argument("--patterns-analyze", metavar="FILE",
-                                       help="Analyser les design patterns dans un fichier de code")
-            pattern_group.add_argument("--project-patterns", metavar="DIR",
-                                       help="Analyser les design patterns dans un projet entier")
-            pattern_group.add_argument("--pattern-output",
-                                       help="Fichier où sauvegarder l'analyse des patterns")
+        # Options pour l'analyse de patterns
+        pattern_group = parser.add_argument_group('Patterns')
+        pattern_group.add_argument(
+            "--patterns-analyze",
+            metavar="FILE",
+            help="Analyser patterns dans un fichier"
+        )
+        pattern_group.add_argument(
+            "--project-patterns",
+            metavar="DIR",
+            help="Analyser patterns dans un projet"
+        )
+        pattern_group.add_argument(
+            "--pattern-output",
+            help="Fichier de sortie pour l'analyse"
+        )
 
         # Commandes utilitaires
-        util_group = parser.add_argument_group('Commandes utilitaires')
-        util_group.add_argument("--list", "-l", action="store_true", help="Lister les conversations sauvegardées")
-        util_group.add_argument("--setup", action="store_true", help="Configurer l'outil")
-        util_group.add_argument("--models", action="store_true", help="Afficher les modèles disponibles")
-        util_group.add_argument("--version", "-v", action="store_true", help="Afficher la version de l'outil")
+        util_group = parser.add_argument_group('Utilitaires')
+        util_group.add_argument(
+            "--list", "-l",
+            action="store_true",
+            help="Lister conversations"
+        )
+        util_group.add_argument(
+            "--setup",
+            action="store_true",
+            help="Configuration"
+        )
+        util_group.add_argument(
+            "--models",
+            action="store_true",
+            help="Liste des modèles"
+        )
+        util_group.add_argument(
+            "--version", "-v",
+            action="store_true",
+            help="Version"
+        )
 
         # Options Git
-        git_group = parser.add_argument_group('Options Git')
-        git_group.add_argument("--git-commit", action="store_true",
-                               help="Génère un message de commit intelligent pour les changements actuels")
-        git_group.add_argument("--git-branch",
-                               help="Suggère un nom de branche intelligent basé sur la description fournie")
-        git_group.add_argument("--git-analyze", action="store_true",
-                               help="Analyse le dépôt Git et fournit des insights")
-        git_group.add_argument("--git-diff-analyze", action="store_true",
-                               help="Analyse détaillée des changements actuels")
-        git_group.add_argument("--git-create-branch", action="store_true",
-                               help="Crée une nouvelle branche avec un nom intelligent")
-        git_group.add_argument("--git-commit-and-push", action="store_true",
-                               help="Commit les changements avec un message intelligent et pousse vers le remote")
-        git_group.add_argument("--git-conventional-commit", action="store_true",
-                               help="Génère un message de commit au format Conventional Commits")
-        git_group.add_argument("--git-stash", action="store", nargs="?", const="", metavar="NOM",
-                               help="Crée un stash des modifications courantes avec un nom optionnel")
-        git_group.add_argument("--git-stash-apply", action="store_true",
-                               help="Applique le dernier stash créé")
-        git_group.add_argument("--git-merge", action="store", metavar="BRANCHE",
-                               help="Fusionne la branche spécifiée dans la branche courante")
-        git_group.add_argument("--git-merge-squash", action="store", metavar="BRANCHE",
-                               help="Fusionne la branche spécifiée en un seul commit")
-        git_group.add_argument("--git-log", action="store_true",
-                               help="Affiche un historique Git amélioré")
-        git_group.add_argument("--git-log-format", choices=["default", "detailed", "summary", "stats", "full"],
-                               default="default", help="Format d'affichage pour git-log")
-        git_group.add_argument("--git-log-count", type=int, default=10,
-                               help="Nombre de commits à afficher dans le log")
-        git_group.add_argument("--git-log-graph", action="store_true",
-                               help="Affiche le log avec un graphe des branches")
-        git_group.add_argument("--git-visualize", action="store_true",
-                               help="Affiche une visualisation avancée de l'historique Git")
-        git_group.add_argument("--git-conflict-assist", action="store_true",
-                               help="Fournit une assistance pour résoudre les conflits de fusion")
-        git_group.add_argument("--git-retrospective", action="store", type=int, nargs="?",
-                               const=14, metavar="JOURS",
-                               help="Génère une rétrospective basée sur l'activité récente (14 jours par défaut)")
+        git_group = parser.add_argument_group('Git')
+        git_group.add_argument(
+            "--git-commit",
+            action="store_true",
+            help="Message de commit"
+        )
+        git_group.add_argument(
+            "--git-branch",
+            help="Nom de branche"
+        )
+        git_group.add_argument(
+            "--git-analyze",
+            action="store_true",
+            help="Analyser dépôt"
+        )
+        git_group.add_argument(
+            "--git-diff-analyze",
+            action="store_true",
+            help="Analyser diff"
+        )
+        git_group.add_argument(
+            "--git-create-branch",
+            action="store_true",
+            help="Créer branche"
+        )
+        git_group.add_argument(
+            "--git-commit-and-push",
+            action="store_true",
+            help="Commit et push"
+        )
+        git_group.add_argument(
+            "--git-conventional-commit",
+            action="store_true",
+            help="Commit conventionnel"
+        )
+        git_group.add_argument(
+            "--git-stash",
+            action="store",
+            nargs="?",
+            const="",
+            metavar="NOM",
+            help="Stash"
+        )
+        git_group.add_argument(
+            "--git-stash-apply",
+            action="store_true",
+            help="Appliquer stash"
+        )
+        git_group.add_argument(
+            "--git-merge",
+            action="store",
+            metavar="BRANCHE",
+            help="Fusionner branche"
+        )
+        git_group.add_argument(
+            "--git-merge-squash",
+            action="store",
+            metavar="BRANCHE",
+            help="Fusionner en squash"
+        )
+        git_group.add_argument(
+            "--git-log",
+            action="store_true",
+            help="Log amélioré"
+        )
+        git_group.add_argument(
+            "--git-log-format",
+            choices=["default", "detailed", "summary", "stats", "full"],
+            default="default",
+            help="Format du log"
+        )
+        git_group.add_argument(
+            "--git-log-count",
+            type=int,
+            default=10,
+            help="Nombre de commits"
+        )
+        git_group.add_argument(
+            "--git-log-graph",
+            action="store_true",
+            help="Log avec graphe"
+        )
+        git_group.add_argument(
+            "--git-visualize",
+            action="store_true",
+            help="Visualisation"
+        )
+        git_group.add_argument(
+            "--git-conflict-assist",
+            action="store_true",
+            help="Aide conflits"
+        )
+        git_group.add_argument(
+            "--git-retrospective",
+            action="store",
+            type=int,
+            nargs="?",
+            const=14,
+            metavar="JOURS",
+            help="Rétrospective"
+        )
 
         return parser
 
