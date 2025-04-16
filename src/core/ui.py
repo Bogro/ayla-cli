@@ -52,19 +52,19 @@ class UI:
         return self.console.input(prompt)
 
     def get_api_key_input(self) -> Tuple[str, bool]:
-        """Demande la clé API à l'utilisateur et s'il souhaite la sauvegarder"""
-        self.print_info("Aucune clé API Anthropic trouvée.")
-        api_key = self.get_input("[bold]Veuillez entrer votre clé API Anthropic: [/bold]")
-
-        if not api_key:
-            self.print_error("Aucune clé API fournie. Impossible de continuer.")
-            sys.exit(1)
-
-        # Demander si l'utilisateur souhaite sauvegarder la clé
-        save_key = self.get_input(
-            "[bold]Voulez-vous sauvegarder cette clé pour une utilisation future? (o/n): [/bold]").lower()
-
-        return api_key, save_key in ('o', 'oui')
+        """
+        Demande la clé API à l'utilisateur.
+        
+        Returns:
+            tuple : (clé API, booléen indiquant si la clé doit être sauvegardée)
+        """
+        self.print_info("\nVeuillez entrer votre clé API Anthropic :")
+        api_key = input().strip()
+        
+        self.print_info("\nVoulez-vous sauvegarder cette clé ? (o/N) :")
+        save = input().strip().lower() == 'o'
+        
+        return api_key, save
 
     def format_code_blocks(self, text: str) -> List:
         """Détecte et formate les blocs de code dans le texte"""

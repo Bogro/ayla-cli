@@ -18,6 +18,7 @@ class GitManager:
         self.current_branch = None
         self.last_check = 0
         self.repo_info = {}
+        self.client = None  # Sera défini plus tard
 
     def set_repo_path(self, path: str) -> bool:
         """Définit le chemin du dépôt Git et vérifie s'il s'agit d'un dépôt valide"""
@@ -1318,3 +1319,563 @@ Voici le diff :
                 }
 
         return retrospective
+
+    def set_client(self, client):
+        """Définit le client pour les appels à l'IA"""
+        self.client = client
+
+    async def analyze_repository(self, api_key: str) -> Dict[str, Any]:
+        """
+        Analyse complète du dépôt Git avec des insights générés par l'IA.
+        
+        Args :
+            api_key : Clé API pour l'analyse IA
+            
+        Returns :
+            Dict[str, Any] : Résultats de l'analyse contenant diverses 
+            métriques
+        """
+        if not self.is_git_repo:
+            return {
+                "error": "Le répertoire n'est pas un dépôt Git valide"
+            }
+            
+        if not self.client:
+            return {
+                "error": "Client IA non initialisé"
+            }
+            
+        analysis = {
+            "general_info": self._get_repository_info(),
+            "activity": self._analyze_activity(),
+            "branches": self._analyze_branches(),
+            "contributors": self._analyze_contributors(),
+            "code_health": self._analyze_code_health(),
+            "insights": await self._generate_ai_insights(api_key)
+        }
+        
+        return analysis
+        
+    def _get_repository_info(self) -> Dict[str, Any]:
+        """Récupère les informations générales sur le dépôt."""
+        info = {
+            "current_branch": self.current_branch,
+            "remote_urls": self._get_remotes(),
+            "last_commit": self._get_last_commit(),
+            "total_commits": 0,
+            "repository_size": "0",
+            "creation_date": "",
+        }
+        
+        # Nombre total de commits
+        success, output = self._run_git_command(['rev-list', '--count', 'HEAD'])
+        if success:
+            info["total_commits"] = int(output)
+            
+        # Taille du dépôt
+        success, output = self._run_git_command(['count-objects', '-v'])
+        if success:
+            for line in output.split('\n'):
+                if line.startswith('size-pack'):
+                    size_kb = int(line.split()[1])
+                    info["repository_size"] = self._format_size(size_kb * 1024)
+                    
+        # Date de création
+        success, output = self._run_git_command(
+            ['log', '--reverse', '--format=%cd', '--date=iso', 'HEAD^!']
+        )
+        if success:
+            info["creation_date"] = output.strip()
+            
+        return info
+        
+    def _analyze_activity(self) -> Dict[str, Any]:
+        """Analyse l'activité du dépôt."""
+        activity = {
+            "commit_frequency": {
+                "last_day": 0,
+                "last_week": 0,
+                "last_month": 0
+            },
+            "most_active_times": [],
+            "most_modified_files": [],
+            "commit_types": {}
+        }
+        
+        # Fréquence des commits
+        for period, days in [("last_day", 1), ("last_week", 7), ("last_month", 30)]:
+            success, output = self._run_git_command([
+                'rev-list', '--count', f'--since={days}.days.ago', 'HEAD'
+            ])
+            if success:
+                activity["commit_frequency"][period] = int(output)
+                
+        # Heures les plus actives
+        success, output = self._run_git_command([
+            'log', '--format=%ad', '--date=format:%H'
+        ])
+        if success:
+            try:
+                hours = [int(h) for h in output.split('\n') if h.strip()]
+                from collections import Counter
+                hour_counts = Counter(hours)
+                activity["most_active_times"] = [
+                    {"hour": h, "commits": c}
+                    for h, c in hour_counts.most_common(5)
+                ]
+            except ValueError:
+                # En cas d'erreur de conversion, on ignore cette métrique
+                activity["most_active_times"] = []
+            
+        # Fichiers les plus modifiés
+        success, output = self._run_git_command([
+            'log', '--pretty=format:', '--name-only'
+        ])
+        if success:
+            files = [f for f in output.split('\n') if f.strip()]
+            file_counts = Counter(files)
+            activity["most_modified_files"] = [
+                {"file": f, "modifications": c}
+                for f, c in file_counts.most_common(10)
+            ]
+            
+        # Types de commits (basé sur les préfixes conventionnels)
+        success, output = self._run_git_command([
+            'log', '--format=%s', 'HEAD'
+        ])
+        if success:
+            commit_types = {
+                "feat": 0, "fix": 0, "docs": 0, "style": 0,
+                "refactor": 0, "perf": 0, "test": 0, "chore": 0
+            }
+            for msg in output.split('\n'):
+                for ctype in commit_types:
+                    if msg.startswith(f"{ctype}:") or msg.startswith(f"{ctype}("):
+                        commit_types[ctype] += 1
+                        break
+            activity["commit_types"] = commit_types
+            
+        return activity
+        
+    def _analyze_branches(self) -> Dict[str, Any]:
+        """Analyse les branches du dépôt."""
+        branches = {
+            "total_count": 0,
+            "active_branches": [],
+            "merged_branches": [],
+            "stale_branches": []
+        }
+        
+        # Récupérer toutes les branches
+        success, output = self._run_git_command(['branch', '-a'])
+        if success:
+            all_branches = [b.strip() for b in output.split('\n') if b.strip()]
+            branches["total_count"] = len(all_branches)
+            
+        # Branches fusionnées
+        success, output = self._run_git_command(['branch', '--merged'])
+        if success:
+            branches["merged_branches"] = [
+                b.strip() for b in output.split('\n') if b.strip()
+            ]
+            
+        # Analyser l'activité des branches
+        for branch in all_branches:
+            branch = branch.replace('*', '').strip()
+            success, last_commit = self._run_git_command([
+                'log', '-1', '--format=%ct', branch
+            ])
+            if success:
+                timestamp = int(last_commit.strip())
+                from datetime import datetime, timezone
+                last_activity = datetime.fromtimestamp(
+                    timestamp, tz=timezone.utc
+                )
+                
+                # Branches sans activité depuis 3 mois
+                if (datetime.now(timezone.utc) - last_activity).days > 90:
+                    branches["stale_branches"].append({
+                        "name": branch,
+                        "last_activity": last_activity.isoformat()
+                    })
+                else:
+                    branches["active_branches"].append({
+                        "name": branch,
+                        "last_activity": last_activity.isoformat()
+                    })
+                    
+        return branches
+        
+    def _analyze_contributors(self) -> Dict[str, Any]:
+        """Analyse les contributeurs du dépôt."""
+        contributors = {
+            "total_count": 0,
+            "top_contributors": [],
+            "recent_contributors": [],
+            "contribution_timeline": {}
+        }
+        
+        # Récupérer tous les contributeurs
+        success, output = self._run_git_command([
+            'shortlog', '-sne', 'HEAD'
+        ])
+        if success:
+            contributors["total_count"] = len(output.split('\n'))
+            # Top contributeurs
+            for line in output.split('\n')[:10]:  # Top 10
+                if line.strip():
+                    count, author = line.strip().split('\t')
+                    contributors["top_contributors"].append({
+                        "name": author,
+                        "commits": int(count)
+                    })
+                    
+        # Contributeurs récents (30 derniers jours)
+        success, output = self._run_git_command([
+            'log', '--format=%ae', '--since=30.days.ago'
+        ])
+        if success:
+            recent = set(output.split('\n'))
+            contributors["recent_contributors"] = list(recent)
+            
+        # Timeline des contributions
+        success, output = self._run_git_command([
+            'log', '--format=%ad', '--date=format:%Y-%m', 'HEAD'
+        ])
+        if success:
+            from collections import Counter
+            timeline = Counter(output.split('\n'))
+            contributors["contribution_timeline"] = {
+                month: count for month, count in 
+                sorted(timeline.items(), reverse=True)[:12]  # 12 derniers mois
+            }
+            
+        return contributors
+        
+    def _analyze_code_health(self) -> Dict[str, Any]:
+        """Analyse la santé du code dans le dépôt."""
+        health = {
+            "file_types": {},
+            "code_churn": {
+                "additions": 0,
+                "deletions": 0,
+                "total_lines": 0
+            },
+            "commit_quality": {
+                "descriptive_messages": 0,
+                "empty_messages": 0,
+                "conventional_commits": 0
+            }
+        }
+        
+        # Types de fichiers
+        success, output = self._run_git_command([
+            'ls-files'
+        ])
+        if success:
+            from collections import Counter
+            import os
+            extensions = Counter(
+                os.path.splitext(f)[1] for f in output.split('\n') if f.strip()
+            )
+            health["file_types"] = {
+                ext if ext else 'no_extension': count
+                for ext, count in extensions.most_common()
+            }
+            
+        # Code churn
+        success, output = self._run_git_command([
+            'log', '--numstat', '--pretty=format:'
+        ])
+        if success:
+            for line in output.split('\n'):
+                if line.strip():
+                    try:
+                        add, delete, _ = line.split('\t')
+                        if add != '-' and delete != '-':
+                            health["code_churn"]["additions"] += int(add)
+                            health["code_churn"]["deletions"] += int(delete)
+                    except ValueError:
+                        continue
+                        
+        # Qualité des commits
+        success, output = self._run_git_command([
+            'log', '--format=%s', 'HEAD'
+        ])
+        if success:
+            messages = output.split('\n')
+            for msg in messages:
+                if not msg.strip():
+                    health["commit_quality"]["empty_messages"] += 1
+                elif len(msg.split()) > 3:  # Message descriptif
+                    health["commit_quality"]["descriptive_messages"] += 1
+                if any(msg.startswith(t) for t in [
+                    'feat', 'fix', 'docs', 'style', 'refactor',
+                    'perf', 'test', 'chore'
+                ]):
+                    health["commit_quality"]["conventional_commits"] += 1
+                    
+        return health
+        
+    async def _generate_ai_insights(self, api_key: str) -> List[str]:
+        """Génère des insights sur le dépôt en utilisant l'IA."""
+        insights = []
+        
+        # Récupérer un résumé des derniers changements
+        success, recent_changes = self._run_git_command([
+            'log', '-n', '10', '--format=%s%n%b'
+        ])
+        
+        if not success:
+            return ["Impossible de générer des insights IA."]
+            
+        # Construire le prompt pour l'IA
+        prompt = f"""
+En tant qu'expert en développement logiciel, analyse ces récents changements 
+dans le dépôt Git et fournis des insights pertinents sur :
+
+1. Les tendances de développement
+2. Les potentielles améliorations
+3. Les bonnes pratiques observées
+4. Les risques potentiels
+
+Changements récents :
+{recent_changes}
+
+Réponds avec une liste concise de 3-5 insights importants.
+"""
+        
+        try:
+            # Envoyer la requête à Claude
+            response = await self.client.send_message(
+                "claude-3-haiku-20240307",
+                [{"role": "user", "content": prompt}],
+                max_tokens=500,
+                temperature=0.3
+            )
+            
+            # Traiter la réponse
+            insights = [
+                insight.strip() 
+                for insight in response.strip().split('\n') 
+                if insight.strip()
+            ]
+            
+        except Exception as e:
+            insights = [
+                f"Erreur lors de la génération des insights IA: {str(e)}"
+            ]
+            
+        return insights
+        
+    def _format_size(self, size_bytes: int) -> str:
+        """Formate une taille en bytes en format lisible."""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024
+        return f"{size_bytes:.1f} TB"
+
+    def analyze_changes(self) -> Dict[str, Any]:
+        """
+        Analyse détaillée des changements en cours dans le dépôt.
+        
+        Returns :
+            Dict[str, Any] : Analyse des changements avec statistiques et détails
+        """
+        if not self.is_git_repo:
+            return {
+                "error": "Le répertoire n'est pas un dépôt Git valide"
+            }
+            
+        analysis = {
+            "summary": {
+                "files_changed": 0,
+                "insertions": 0,
+                "deletions": 0
+            },
+            "staged_changes": [],
+            "unstaged_changes": [],
+            "untracked_files": [],
+            "file_details": [],
+            "impact_analysis": {},
+            "content_changes": []  # Nouveau champ pour le contenu des modifications
+        }
+        
+        # Obtenir le statut des fichiers
+        status = self._get_repo_status()
+        analysis["staged_changes"] = status["staged"]
+        analysis["unstaged_changes"] = status["modified"]
+        analysis["untracked_files"] = status["untracked"]
+        
+        # Obtenir les statistiques détaillées
+        success, output = self._run_git_command([
+            'diff', '--numstat'
+        ])
+        
+        if success:
+            for line in output.split('\n'):
+                if line.strip():
+                    try:
+                        additions, deletions, filepath = line.split('\t')
+                        if additions != '-' and deletions != '-':
+                            analysis["summary"]["insertions"] += int(additions)
+                            analysis["summary"]["deletions"] += int(deletions)
+                            analysis["file_details"].append({
+                                "file": filepath,
+                                "additions": int(additions),
+                                "deletions": int(deletions),
+                                "total_changes": int(additions) + int(deletions)
+                            })
+                    except ValueError:
+                        continue
+                        
+        analysis["summary"]["files_changed"] = len(analysis["file_details"])
+        
+        # Obtenir le contenu des modifications
+        success, diff_output = self._run_git_command([
+            'diff', '--unified=3'  # Afficher 3 lignes de contexte
+        ])
+        
+        if success and diff_output:
+            current_file = None
+            current_changes = []
+            
+            for line in diff_output.split('\n'):
+                if line.startswith('diff --git'):
+                    # Nouveau fichier, sauvegarder les changements précédents
+                    if current_file and current_changes:
+                        analysis["content_changes"].append({
+                            "file": current_file,
+                            "changes": current_changes
+                        })
+                    # Extraire le nom du nouveau fichier
+                    current_file = line.split(' b/')[-1]
+                    current_changes = []
+                elif line.startswith('@@'):
+                    # Marqueur de position, on l'ajoute comme information
+                    current_changes.append({
+                        "type": "position",
+                        "content": line
+                    })
+                elif line.startswith('+'):
+                    # Ligne ajoutée
+                    current_changes.append({
+                        "type": "addition",
+                        "content": line[1:]
+                    })
+                elif line.startswith('-'):
+                    # Ligne supprimée
+                    current_changes.append({
+                        "type": "deletion",
+                        "content": line[1:]
+                    })
+                elif line.startswith(' '):
+                    # Ligne de contexte
+                    current_changes.append({
+                        "type": "context",
+                        "content": line[1:]
+                    })
+            
+            # Ajouter les derniers changements
+            if current_file and current_changes:
+                analysis["content_changes"].append({
+                    "file": current_file,
+                    "changes": current_changes
+                })
+        
+        # Analyser l'impact des changements
+        analysis["impact_analysis"] = self._analyze_change_impact()
+        
+        return analysis
+        
+    def _analyze_change_impact(self) -> Dict[str, Any]:
+        """Analyse l'impact des changements actuels."""
+        impact = {
+            "risk_level": "low",
+            "affected_components": [],
+            "potential_risks": [],
+            "suggestions": []
+        }
+        
+        # Obtenir les fichiers modifiés avec leur contenu
+        success, output = self._run_git_command([
+            'diff', '--unified=0'
+        ])
+        
+        if not success:
+            return impact
+            
+        # Analyser les modifications
+        high_risk_patterns = [
+            'password', 'secret', 'token', 'api_key',
+            'database', 'config', 'security', 'auth'
+        ]
+        
+        critical_files = [
+            'requirements.txt', 'package.json', 'setup.py',
+            'config.py', 'settings.py', 'Dockerfile',
+            '.gitignore', '.env'
+        ]
+        
+        # Identifier les composants affectés
+        components = set()
+        for file in self._get_repo_status()["modified"]:
+            component = file.split('/')[0] if '/' in file else 'root'
+            components.add(component)
+        impact["affected_components"] = list(components)
+        
+        # Évaluer le niveau de risque
+        risk_score = 0
+        
+        # Vérifier les patterns à risque
+        for pattern in high_risk_patterns:
+            if pattern in output.lower():
+                risk_score += 2
+                impact["potential_risks"].append(
+                    f"Modification de code lié à '{pattern}'"
+                )
+                
+        # Vérifier les fichiers critiques
+        for file in critical_files:
+            if any(f.endswith(file) for f in self._get_repo_status()["modified"]):
+                risk_score += 3
+                impact["potential_risks"].append(
+                    f"Modification du fichier critique '{file}'"
+                )
+                
+        # Évaluer le nombre de fichiers modifiés
+        files_changed = len(self._get_repo_status()["modified"])
+        if files_changed > 10:
+            risk_score += 2
+            impact["potential_risks"].append(
+                "Nombre important de fichiers modifiés"
+            )
+            
+        # Définir le niveau de risque
+        if risk_score > 8:
+            impact["risk_level"] = "high"
+        elif risk_score > 4:
+            impact["risk_level"] = "medium"
+            
+        # Générer des suggestions
+        if impact["risk_level"] == "high":
+            impact["suggestions"].extend([
+                "Envisager de diviser les changements en plusieurs commits",
+                "Effectuer une revue de code approfondie",
+                "Vérifier les implications de sécurité",
+                "Tester exhaustivement les modifications"
+            ])
+        elif impact["risk_level"] == "medium":
+            impact["suggestions"].extend([
+                "Documenter les changements importants",
+                "Ajouter des tests pour les nouvelles fonctionnalités",
+                "Vérifier la rétrocompatibilité"
+            ])
+        else:
+            impact["suggestions"].extend([
+                "Ajouter des commentaires si nécessaire",
+                "Mettre à jour la documentation"
+            ])
+            
+        return impact

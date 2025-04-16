@@ -3,6 +3,7 @@ import os
 import signal
 import sys
 import textwrap
+from typing import Dict, Any
 
 from anthropic import (
     Anthropic
@@ -33,9 +34,51 @@ class AylaCli:
 
     def __init__(self):
         """Initialise l'application"""
-        # Gérer le CTRL+C
-        self.running = None
+        # Capturer CTRL+C
         signal.signal(signal.SIGINT, self._handle_sigint)
+
+        # Vérifier si l'analyse de code est disponible
+        self.code_analysis_available = True
+        try:
+            # Juste vérifier si le module est disponible
+            import importlib.util
+            if not importlib.util.find_spec("tree_sitter"):
+                self.code_analysis_available = False
+        except ImportError:
+            self.code_analysis_available = False
+
+        # Initialiser les composants
+        self.ui = UI()
+        self.config = AylaConfig()
+        self.conv_manager = ConversationManager(self.config, self.ui)
+        self.file_manager = FileManager(self.ui)
+        self.streamer = ResponseStreamer(self.ui)
+        self.git_manager = GitManager(self.ui)
+        
+        # Initialiser le dépôt Git avec le répertoire courant
+        self.git_manager.set_repo_path(os.getcwd())
+        
+        self.console = Console()
+        self.client = Anthropic()
+        self.crew_manager = CrewManager(
+            model=self.config.DEFAULT_MODEL
+        )
+
+        # Initialiser le gestionnaire d'analyse de code si disponible
+        if self.code_analysis_available:
+            os.makedirs(
+                self.config.DEFAULT_ANALYSIS_DIR,
+                exist_ok=True
+            )
+            # Sera initialisé après l'obtention de la clé API
+            self.code_analyzer = None
+            self.pattern_analyzer = None
+
+        # Client sera initialisé plus tard avec la clé API
+        self.client = None
+
+        # Créer le parseur d'arguments
+        self.parser = self._setup_argparse()
 
         # Commandes disponibles pour le TUI
         self.available_commands = {
@@ -64,39 +107,6 @@ class AylaCli:
             "/git-retrospective": "Génère une rétrospective",
             "/crew": "Commandes de l'équipe AI"
         }
-
-        # Vérifier si le module d'analyse de code est disponible
-        try:
-            from src.core.modules.code_analysis import (
-                CodeAnalyzer, DocumentationGenerator, 
-                ProjectAnalyzer, PatternAnalyzer
-            )
-            self.code_analysis_available = True
-        except ImportError:
-            self.code_analysis_available = False
-
-        # Initialiser les composants
-        self.ui = UI()
-        self.config = AylaConfig()
-        self.conv_manager = ConversationManager(self.config, self.ui)
-        self.file_manager = FileManager(self.ui)
-        self.streamer = ResponseStreamer(self.ui)
-        self.git_manager = GitManager(self.ui)
-        self.console = Console()
-        self.client = Anthropic()
-        self.crew_manager = CrewManager(model=self.config.DEFAULT_MODEL)
-
-        # Initialiser le gestionnaire d'analyse de code si disponible
-        if self.code_analysis_available:
-            os.makedirs(self.config.DEFAULT_ANALYSIS_DIR, exist_ok=True)
-            self.code_analyzer = None  # Sera initialisé après l'obtention de la clé API
-            self.pattern_analyzer = None  # Sera initialisé après l'obtention de la clé API
-
-        # Client sera initialisé plus tard avec la clé API
-        self.client = None
-
-        # Créer le parseur d'arguments
-        self.parser = self._setup_argparse()
 
     def _handle_sigint(self, signal, frame):
         """Gère l'interruption par CTRL+C"""
@@ -317,8 +327,8 @@ class AylaCli:
                 self.ui.print_warning("Aucune conversation précédente trouvée.")
 
         # Traiter les commandes Git en priorité
-        # if await self._process_git_commands(args, api_key):
-        #     return
+        if await self._process_git_commands(args, api_key):
+            return
 
         # Choisir l'action en fonction des arguments
         # if args.tui:
@@ -553,6 +563,149 @@ class AylaCli:
             return asyncio.create_task(
                 self.git_manager.generate_retrospective(days, api_key)
             )
+        elif git_cmd == "diff-analyze":
+            # Analyser les changements
+            analysis = self.git_manager.analyze_changes()
+            
+            if "error" in analysis:
+                self.ui.print_error(analysis["error"])
+                return True
+                
+            # Afficher le résumé
+            self.ui.print_info("\n[bold cyan]=== Résumé des Changements ===[/bold cyan]")
+            summary = analysis["summary"]
+            self.ui.print_info(Panel(
+                f"[white]Fichiers modifiés : [bold]{summary['files_changed']}[/bold]\n"
+                f"Lignes ajoutées   : [bold green]+{summary['insertions']}[/bold green]\n"
+                f"Lignes supprimées : [bold red]-{summary['deletions']}[/bold red][/white]",
+                title="Statistiques",
+                border_style="cyan"
+            ))
+            
+            # Afficher les changements par statut
+            self.ui.print_info("\n[bold cyan]=== État des Fichiers ===[/bold cyan]")
+            
+            # Créer des sections pour chaque type de changement
+            staged_content = ""
+            if analysis["staged_changes"]:
+                staged_content = "\n".join(f"[green]+ {file}[/green]" 
+                                         for file in analysis["staged_changes"])
+            
+            unstaged_content = ""
+            if analysis["unstaged_changes"]:
+                unstaged_content = "\n".join(f"[yellow]* {file}[/yellow]" 
+                                           for file in analysis["unstaged_changes"])
+            
+            untracked_content = ""
+            if analysis["untracked_files"]:
+                untracked_content = "\n".join(f"[dim]? {file}[/dim]" 
+                                            for file in analysis["untracked_files"])
+            
+            # Afficher les sections dans des panels
+            if staged_content:
+                self.ui.print_info(Panel(
+                    staged_content,
+                    title="[green]Fichiers indexés[/green]",
+                    border_style="green"
+                ))
+            
+            if unstaged_content:
+                self.ui.print_info(Panel(
+                    unstaged_content,
+                    title="[yellow]Fichiers modifiés non indexés[/yellow]",
+                    border_style="yellow"
+                ))
+            
+            if untracked_content:
+                self.ui.print_info(Panel(
+                    untracked_content,
+                    title="[dim]Fichiers non suivis[/dim]",
+                    border_style="dim"
+                ))
+            
+            # Afficher les détails par fichier
+            self.ui.print_info("\n[bold cyan]=== Détails par Fichier ===[/bold cyan]")
+            file_details = []
+            for detail in sorted(
+                analysis["file_details"],
+                key=lambda x: x["total_changes"],
+                reverse=True
+            ):
+                file_details.append(
+                    f"[bold]{detail['file']}[/bold]\n"
+                    f"  [green]+ {detail['additions']}[/green] "
+                    f"[red]- {detail['deletions']}[/red] "
+                    f"([yellow]{detail['total_changes']} changements[/yellow])"
+                )
+            
+            if file_details:
+                self.ui.print_info(Panel(
+                    "\n".join(file_details),
+                    title="Modifications par fichier",
+                    border_style="cyan"
+                ))
+            
+            # Afficher le contenu des modifications
+            if "content_changes" in analysis:
+                self.ui.print_info("\n[bold cyan]=== Contenu des Modifications ===[/bold cyan]")
+                for file_change in analysis["content_changes"]:
+                    file_content = []
+                    file_content.append(f"[bold white]{file_change['file']}[/bold white]\n")
+                    
+                    for change in file_change["changes"]:
+                        if change["type"] == "position":
+                            file_content.append(f"[dim]{change['content']}[/dim]")
+                        elif change["type"] == "addition":
+                            file_content.append(f"[green]+{change['content']}[/green]")
+                        elif change["type"] == "deletion":
+                            file_content.append(f"[red]-{change['content']}[/red]")
+                        elif change["type"] == "context":
+                            file_content.append(f" {change['content']}")
+                    
+                    self.ui.print_info(Panel(
+                        "\n".join(file_content),
+                        border_style="blue"
+                    ))
+            
+            # Afficher l'analyse d'impact
+            self.ui.print_info("\n[bold cyan]=== Analyse d'Impact ===[/bold cyan]")
+            impact = analysis["impact_analysis"]
+            
+            # Niveau de risque avec code couleur
+            risk_color = {
+                "low": "green",
+                "medium": "yellow",
+                "high": "red"
+            }.get(impact["risk_level"], "white")
+            
+            impact_content = [
+                f"[bold]Niveau de risque :[/bold] [{risk_color}]{impact['risk_level'].upper()}[/{risk_color}]"
+            ]
+            
+            if impact["affected_components"]:
+                impact_content.append("\n[bold]Composants affectés :[/bold]")
+                impact_content.extend(f"  • {comp}" for comp in impact["affected_components"])
+            
+            if impact["potential_risks"]:
+                impact_content.append("\n[bold]Risques potentiels :[/bold]")
+                impact_content.extend(
+                    f"  [red]! {risk}[/red]" for risk in impact["potential_risks"]
+                )
+            
+            if impact["suggestions"]:
+                impact_content.append("\n[bold]Suggestions :[/bold]")
+                impact_content.extend(
+                    f"  [green]> {suggestion}[/green]" 
+                    for suggestion in impact["suggestions"]
+                )
+            
+            self.ui.print_info(Panel(
+                "\n".join(impact_content),
+                title="Analyse des risques et recommandations",
+                border_style="cyan"
+            ))
+            
+            return True
         else:
             return f"Commande Git inconnue: {git_cmd}"
 
@@ -584,3 +737,309 @@ class AylaCli:
 /crew research <sujet>  - Lance une recherche approfondie sur un sujet
 /crew review <code>     - Effectue une revue de code complète
         """, title="Aide CrewAI"))
+
+    async def _process_git_commands(self, args, api_key: str) -> bool:
+        """
+        Traite toutes les commandes Git disponibles.
+
+        Args :
+            args : Arguments de la ligne de commande
+            api_key : Clé API pour les fonctionnalités IA
+
+        Returns :
+            bool : True si une commande Git a été traitée, False sinon
+        """
+        # Vérifier si une commande Git est demandée
+        git_commands = [
+            'git_commit', 'git_branch', 'git_analyze', 'git_diff_analyze',
+            'git_conventional_commit', 'git_create_branch', 'git_commit_and_push',
+            'git_stash', 'git_stash_apply', 'git_merge', 'git_merge_squash',
+            'git_log', 'git_visualize', 'git_conflict_assist', 'git_retrospective'
+        ]
+
+        has_git_command = any(hasattr(args, cmd) and getattr(args, cmd) for cmd in git_commands)
+        if not has_git_command:
+            return False
+
+        # Initialiser le gestionnaire Git si ce n'est pas déjà fait
+        if not hasattr(self, 'git_manager'):
+            self.git_manager = GitManager(self.ui)
+            # Utiliser le répertoire courant comme dépôt
+            if not self.git_manager.set_repo_path(os.getcwd()):
+                self.ui.print_error("Le répertoire courant n'est pas un dépôt Git valide")
+                return True
+
+        # Définir le client pour les appels à l'IA
+        self.git_manager.set_client(self.client)
+
+        try:
+            # Traiter chaque commande Git
+            if args.git_commit:
+                # Obtenir le diff actuel
+                diff = self.git_manager.get_detailed_diff()
+                # Générer un message de commit avec Claude
+                message = await self.git_manager.generate_commit_message_with_claude(
+                    diff, self.client, self.config.DEFAULT_MODEL
+                )
+                # Créer le commit
+                self.git_manager.commit_changes(message)
+
+            elif args.git_branch and args.git_branch != True:
+                # Suggérer un nom de branche et la créer
+                branch_name = await self.git_manager.suggest_branch_name(args.description)
+                self.git_manager.switch_branch(branch_name, create=True)
+
+            elif args.git_analyze:
+                # Analyser le dépôt
+                analysis = await self.git_manager.analyze_repository(api_key)
+
+                # Vérifier s'il y a une erreur
+                if "error" in analysis:
+                    self.ui.print_error(analysis["error"])
+                    return True
+
+                # Afficher les informations générales
+                self.ui.print_info("\n=== Informations Générales ===")
+                info = analysis["general_info"]
+                self.ui.print_info(f"Branche actuelle : {info['current_branch']}")
+                self.ui.print_info(f"Nombre total de commits : {info['total_commits']}")
+                self.ui.print_info(f"Taille du dépôt : {info['repository_size']}")
+                self.ui.print_info(f"Date de création : {info['creation_date']}")
+
+                # Afficher l'activité
+                self.ui.print_info("\n=== Activité ===")
+                activity = analysis["activity"]
+                self.ui.print_info("Fréquence des commits :")
+                for period, count in activity["commit_frequency"].items():
+                    self.ui.print_info(f"- {period} : {count} commits")
+
+                # Afficher les branches
+                self.ui.print_info("\n=== Branches ===")
+                branches = analysis["branches"]
+                self.ui.print_info(f"Nombre total de branches : {branches['total_count']}")
+                self.ui.print_info(f"Branches actives : {len(branches['active_branches'])}")
+                self.ui.print_info(f"Branches fusionnées : {len(branches['merged_branches'])}")
+
+                # Afficher les contributeurs
+                self.ui.print_info("\n=== Contributeurs ===")
+                contributors = analysis["contributors"]
+                self.ui.print_info(f"Nombre total : {contributors['total_count']}")
+                if contributors['top_contributors']:
+                    self.ui.print_info("Top contributeurs :")
+                    for contrib in contributors['top_contributors'][:3]:
+                        self.ui.print_info(f"- {contrib['name']} : {contrib['commits']} commits")
+
+                # Afficher la santé du code
+                self.ui.print_info("\n=== Santé du Code ===")
+                health = analysis["code_health"]
+                self.ui.print_info("Qualité des commits :")
+                quality = health["commit_quality"]
+                self.ui.print_info(f"- Messages descriptifs : {quality['descriptive_messages']}")
+                self.ui.print_info(f"- Commits conventionnels : {quality['conventional_commits']}")
+
+                # Afficher les insights IA
+                self.ui.print_info("\n=== Insights IA ===")
+                for insight in analysis["insights"]:
+                    self.ui.print_info(f"- {insight}")
+
+            elif args.git_diff_analyze:
+                # Analyser les changements
+                analysis = self.git_manager.analyze_changes()
+                self._display_git_analysis(analysis)
+
+            elif args.git_conventional_commit:
+                # Générer un message de commit conventionnel
+                diff = self.git_manager.get_detailed_diff()
+                message = await self.git_manager.generate_conventional_commit_message_with_claude(
+                    diff, self.client, self.config.DEFAULT_MODEL
+                )
+                self.git_manager.commit_changes(message)
+
+            elif args.git_create_branch and args.git_create_branch != True:
+                # Créer une nouvelle branche
+                self.git_manager.switch_branch(args.git_create_branch, create=True)
+
+            elif args.git_commit_and_push:
+                # Commit et push en une seule commande
+                diff = self.git_manager.get_detailed_diff()
+                message = await self.git_manager.generate_commit_message_with_claude(
+                    diff, self.client, self.config.DEFAULT_MODEL
+                )
+                if self.git_manager.commit_changes(message):
+                    self.git_manager.push_changes()
+
+            elif args.git_stash:
+                # Gérer les stash
+                self.git_manager.stash_changes(
+                    name=args.git_stash if isinstance(args.git_stash, str) else None
+                )
+
+            elif args.git_stash_apply:
+                # Appliquer le dernier stash
+                success, output = self.git_manager._run_git_command(['stash', 'apply'])
+                if success:
+                    self.ui.print_success("Stash appliqué avec succès")
+                else:
+                    self.ui.print_error(f"Erreur lors de l'application du stash: {output}")
+
+            elif args.git_merge:
+                # Fusionner une branche
+                self.git_manager.merge_branch(args.git_merge)
+
+            elif args.git_merge_squash:
+                # Fusionner une branche en squash
+                self.git_manager.merge_branch(args.git_merge_squash, squash=True)
+
+            elif args.git_log:
+                # Afficher le log amélioré
+                format_type = getattr(args, 'git_log_format', 'default')
+                count = getattr(args, 'git_log_count', 10)
+                show_graph = getattr(args, 'git_log_graph', False)
+                log = self.git_manager.get_enhanced_log(
+                    format_type=format_type,
+                    count=count,
+                    show_graph=show_graph
+                )
+                self.ui.print_info(log)
+
+            elif args.git_visualize:
+                # Visualiser l'historique
+                viz = self.git_manager.visualize_git_history(
+                    include_all_branches=True,
+                    include_stats=True
+                )
+                self.ui.print_info(viz)
+
+            elif args.git_conflict_assist:
+                # Assister dans la résolution des conflits
+                conflicts = self.git_manager.assist_merge_conflicts(
+                    self.git_manager.current_branch
+                )
+                self.ui.print_info(conflicts)
+
+            elif args.git_retrospective:
+                # Générer une rétrospective
+                days = args.git_retrospective if isinstance(args.git_retrospective, int) else 14
+                retro = self.git_manager.generate_sprint_retrospective(days=days)
+                self.ui.print_info(retro)
+
+            return True
+
+        except Exception as e:
+            self.ui.print_error(f"Erreur lors du traitement de la commande Git: {str(e)}")
+            return True
+
+    def _display_git_analysis(self, analysis: Dict[str, Any]) -> None:
+        """Affiche l'analyse Git de manière formatée"""
+        # Afficher le résumé
+        self.ui.print_info("\n[bold cyan]=== Résumé des Changements ===[/bold cyan]")
+        summary = analysis["summary"]
+        self.ui.print_info(Panel(
+            f"[white]Fichiers modifiés : [bold]{summary['files_changed']}[/bold]\n"
+            f"Lignes ajoutées   : [bold green]+{summary['insertions']}[/bold green]\n"
+            f"Lignes supprimées : [bold red]-{summary['deletions']}[/bold red][/white]",
+            title="Statistiques",
+            border_style="cyan"
+        ))
+        
+        # Afficher les changements par statut
+        self.ui.print_info("\n[bold cyan]=== État des Fichiers ===[/bold cyan]")
+        
+        # Créer des sections pour chaque type de changement
+        staged_content = ""
+        if analysis["staged_changes"]:
+            staged_content = "\n".join(f"[green]+ {file}[/green]" 
+                                     for file in analysis["staged_changes"])
+        
+        unstaged_content = ""
+        if analysis["unstaged_changes"]:
+            unstaged_content = "\n".join(f"[yellow]* {file}[/yellow]" 
+                                       for file in analysis["unstaged_changes"])
+        
+        untracked_content = ""
+        if analysis["untracked_files"]:
+            untracked_content = "\n".join(f"[dim]? {file}[/dim]" 
+                                        for file in analysis["untracked_files"])
+        
+        # Afficher les sections dans des panels
+        if staged_content:
+            self.ui.print_info(Panel(
+                staged_content,
+                title="[green]Fichiers indexés[/green]",
+                border_style="green"
+            ))
+        
+        if unstaged_content:
+            self.ui.print_info(Panel(
+                unstaged_content,
+                title="[yellow]Fichiers modifiés non indexés[/yellow]",
+                border_style="yellow"
+            ))
+        
+        if untracked_content:
+            self.ui.print_info(Panel(
+                untracked_content,
+                title="[dim]Fichiers non suivis[/dim]",
+                border_style="dim"
+            ))
+        
+        # Afficher les détails par fichier
+        self.ui.print_info("\n[bold cyan]=== Détails par Fichier ===[/bold cyan]")
+        file_details = []
+        for detail in sorted(
+            analysis["file_details"],
+            key=lambda x: x["total_changes"],
+            reverse=True
+        ):
+            file_details.append(
+                f"[bold]{detail['file']}[/bold]\n"
+                f"  [green]+ {detail['additions']}[/green] "
+                f"[red]- {detail['deletions']}[/red] "
+                f"([yellow]{detail['total_changes']} changements[/yellow])"
+            )
+        
+        if file_details:
+            self.ui.print_info(Panel(
+                "\n".join(file_details),
+                title="Modifications par fichier",
+                border_style="cyan"
+            ))
+        
+        # Afficher l'analyse d'impact
+        if "impact_analysis" in analysis:
+            self.ui.print_info("\n[bold cyan]=== Analyse d'Impact ===[/bold cyan]")
+            impact = analysis["impact_analysis"]
+            
+            # Niveau de risque avec code couleur
+            risk_color = {
+                "low": "green",
+                "medium": "yellow",
+                "high": "red"
+            }.get(impact.get("risk_level", "unknown"), "white")
+            
+            impact_content = [
+                f"[bold]Niveau de risque :[/bold] [{risk_color}]{impact.get('risk_level', 'UNKNOWN').upper()}[/{risk_color}]"
+            ]
+            
+            if impact.get("affected_components"):
+                impact_content.append("\n[bold]Composants affectés :[/bold]")
+                impact_content.extend(f"  • {comp}" for comp in impact["affected_components"])
+            
+            if impact.get("potential_risks"):
+                impact_content.append("\n[bold]Risques potentiels :[/bold]")
+                impact_content.extend(
+                    f"  [red]! {risk}[/red]" for risk in impact["potential_risks"]
+                )
+            
+            if impact.get("suggestions"):
+                impact_content.append("\n[bold]Suggestions :[/bold]")
+                impact_content.extend(
+                    f"  [green]> {suggestion}[/green]" 
+                    for suggestion in impact["suggestions"]
+                )
+            
+            self.ui.print_info(Panel(
+                "\n".join(impact_content),
+                title="Analyse des risques et recommandations",
+                border_style="cyan"
+            ))
