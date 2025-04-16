@@ -330,65 +330,81 @@ class AylaCli:
         if await self._process_git_commands(args, api_key):
             return
 
-        # Choisir l'action en fonction des arguments
-        # if args.tui:
-        #     # Lancer l'interface TUI
-        #     tui = TUIManager(self)
-        #     await tui.start(args, api_key)
+        # Vérifier si les fonctionnalités d'analyse sont disponibles
+        if not self.code_analysis_available:
+            if hasattr(args, 'analyze') or hasattr(args, 'document') or \
+               hasattr(args, 'project') or hasattr(args, 'patterns_analyze') or \
+               hasattr(args, 'project_patterns'):
+                self.ui.print_error(
+                    "Les fonctionnalités d'analyse de code ne sont pas disponibles. "
+                    "Veuillez installer tree-sitter pour utiliser ces fonctionnalités."
+                )
+                return
 
-        elif args.analyze:
+        # Choisir l'action en fonction des arguments
+        if hasattr(args, 'analyze') and args.analyze:
             # Analyser un fichier de code
             analyze = CodeAnalyzerHandler(self.client,
-                                           self.ui,
-                                           self.crew_manager,
-                                           api_key)
-            await  analyze.process(args)
+                                        self.ui,
+                                        self.crew_manager,
+                                        api_key)
+            await analyze.process(args)
 
-        elif args.document:
+        elif hasattr(args, 'document') and args.document:
             # Générer de la documentation
-            generate = DocumentationGeneratorHandler(self.client,
-                                                     self.ui,
-                                                     self.crew_manager,
-                                                     api_key,
-                                                     self.code_analysis_available,
-                                                     self.config)
+            generate = DocumentationGeneratorHandler(
+                self.client,
+                self.ui,
+                self.crew_manager,
+                api_key,
+                self.code_analysis_available,
+                self.config
+            )
             await generate.process(args)
 
-        elif args.project:
+        elif hasattr(args, 'project') and args.project:
             # Analyser un projet entier
-            analyze_project = AnalyzeProjectHandler(self.client,
-                                                    self.ui,
-                                                    self.crew_manager,
-                                                    api_key)
+            analyze_project = AnalyzeProjectHandler(
+                self.client,
+                self.ui,
+                self.crew_manager,
+                api_key
+            )
             await analyze_project.process(args)
             
-        elif args.patterns_analyze:
+        elif hasattr(args, 'patterns_analyze') and args.patterns_analyze:
             # Analyser les design patterns dans un fichier
-            analyze_patterns = AnalyzePatterns(self.client,
-                                               self.ui,
-                                               self.crew_manager,
-                                               api_key,
-                                               self.code_analysis_available,
-                                               self.pattern_analyzer)
+            analyze_patterns = AnalyzePatterns(
+                self.client,
+                self.ui,
+                self.crew_manager,
+                api_key,
+                self.code_analysis_available,
+                self.pattern_analyzer
+            )
             await analyze_patterns.process(args)
-            
-        elif args.project_patterns:
+
+        elif hasattr(args, 'project_patterns') and args.project_patterns:
             # Analyser les design patterns dans un projet
-            analyze_project_patterns = AnalyzeProjectPatterns(self.client,
-                                                               self.ui,
-                                                               self.crew_manager,
-                                                               api_key,
-                                                               self.code_analysis_available,
-                                                               self.pattern_analyzer)
+            analyze_project_patterns = AnalyzeProjectPatterns(
+                self.client,
+                self.ui,
+                self.crew_manager,
+                api_key,
+                self.code_analysis_available,
+                self.pattern_analyzer
+            )
             await analyze_project_patterns.process(args)
 
         else:
             # Traiter une requête standard
-            process_request = ProcessRequest(self.client,
-                                             self.ui,
-                                             self.file_manager,
-                                             self.conv_manager,
-                                             self.streamer)
+            process_request = ProcessRequest(
+                self.client,
+                self.ui,
+                self.file_manager,
+                self.conv_manager,
+                self.streamer
+            )
             await process_request.process_request(args, api_key)
 
     def execute_tui_command(self, command: str, parser_args=None, api_key=None):
@@ -580,7 +596,7 @@ class AylaCli:
                 f"Lignes supprimées : [bold red]-{summary['deletions']}[/bold red][/white]",
                 title="Statistiques",
                 border_style="cyan"
-            ))
+            ).renderable)
             
             # Afficher les changements par statut
             self.ui.print_info("\n[bold cyan]=== État des Fichiers ===[/bold cyan]")
@@ -607,21 +623,21 @@ class AylaCli:
                     staged_content,
                     title="[green]Fichiers indexés[/green]",
                     border_style="green"
-                ))
+                ).renderable)
             
             if unstaged_content:
                 self.ui.print_info(Panel(
                     unstaged_content,
                     title="[yellow]Fichiers modifiés non indexés[/yellow]",
                     border_style="yellow"
-                ))
+                ).renderable)
             
             if untracked_content:
                 self.ui.print_info(Panel(
                     untracked_content,
                     title="[dim]Fichiers non suivis[/dim]",
                     border_style="dim"
-                ))
+                ).renderable)
             
             # Afficher les détails par fichier
             self.ui.print_info("\n[bold cyan]=== Détails par Fichier ===[/bold cyan]")
@@ -643,7 +659,7 @@ class AylaCli:
                     "\n".join(file_details),
                     title="Modifications par fichier",
                     border_style="cyan"
-                ))
+                ).renderable)
             
             # Afficher le contenu des modifications
             if "content_changes" in analysis:
@@ -665,7 +681,7 @@ class AylaCli:
                     self.ui.print_info(Panel(
                         "\n".join(file_content),
                         border_style="blue"
-                    ))
+                    ).renderable)
             
             # Afficher l'analyse d'impact
             self.ui.print_info("\n[bold cyan]=== Analyse d'Impact ===[/bold cyan]")
@@ -703,7 +719,7 @@ class AylaCli:
                 "\n".join(impact_content),
                 title="Analyse des risques et recommandations",
                 border_style="cyan"
-            ))
+            ).renderable)
             
             return True
         else:
