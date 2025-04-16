@@ -1,6 +1,6 @@
 from typing import Optional
 
-from src.views.ui import UI
+from src.core.ui import UI
 
 
 class FileManager:

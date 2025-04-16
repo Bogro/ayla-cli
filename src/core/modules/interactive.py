@@ -6,7 +6,7 @@ from src.services.client import AnthropicClient
 from src.core.modules.command_completer import CommandCompleter
 from src.core.modules.conversation import ConversationManager
 from src.core.streamer import ResponseStreamer
-from src.views.ui import UI
+from src.core.ui import UI
 
 
 class InteractiveMode:

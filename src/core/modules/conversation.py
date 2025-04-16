@@ -4,7 +4,7 @@ import time
 from typing import List, Dict, Optional
 
 from src.config.config import AylaConfig
-from src.views.ui import UI
+from src.core.ui import UI
 
 
 class ConversationManager:

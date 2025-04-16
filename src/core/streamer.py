@@ -1,6 +1,6 @@
 from typing import List, Dict
 
-from src.views.ui import UI
+from src.core.ui import UI
 
 
 class ResponseStreamer:

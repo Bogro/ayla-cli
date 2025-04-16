@@ -6,7 +6,7 @@ from rich.prompt import Confirm, Prompt
 
 from src.core.modules.code_analysis import ProjectAnalyzer
 from src.config.config import AylaConfig
-from src.views.ui import UI
+from src.core.ui import UI
 
 
 class AylaSetupAssistant:

@@ -16,7 +16,7 @@ from src.core.handler.analyze_project_patterns import AnalyzeProjectPatterns
 from src.core.handler.code_analyzer import CodeAnalyzerHandler
 from src.core.handler.documentation_generator import DocumentationGeneratorHandler
 from src.services.client import AnthropicClient
-from src.core.modules.code_analysis import DocumentationGenerator, CodeAnalyzer, PatternAnalyzer
+from src.core.modules.code_analysis import CodeAnalyzer, PatternAnalyzer
 from src.config.config import AylaConfig
 from src.core.modules.conversation import ConversationManager
 from src.core.modules.file_manager import FileManager
@@ -24,8 +24,7 @@ from src.core.modules.git_manager import GitManager
 from src.core.setup import AylaSetupAssistant
 from src.core.streamer import ResponseStreamer
 from src.services.process_request import ProcessRequest
-from src.views.ui import UI
-from src.views.tui import TUIManager
+from src.core.ui import UI
 from src.core.modules.crew_manager import CrewManager
 
 
