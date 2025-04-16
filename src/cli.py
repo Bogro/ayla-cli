@@ -533,7 +533,7 @@ class AylaCli:
                 api_key
             )
             await analyze_project.process(args)
-            
+
         elif hasattr(args, 'patterns_analyze') and args.patterns_analyze:
             # Analyser les design patterns dans un fichier
             analyze_patterns = AnalyzePatterns(
@@ -766,12 +766,12 @@ class AylaCli:
             # Créer des sections pour chaque type de changement
             staged_content = ""
             if analysis["staged_changes"]:
-                staged_content = "\n".join(f"[green]+ {file}[/green]" 
+                staged_content = "\n".join(f"[green]+ {file[0]} ({file[1]})[/green]" 
                                          for file in analysis["staged_changes"])
             
             unstaged_content = ""
             if analysis["unstaged_changes"]:
-                unstaged_content = "\n".join(f"[yellow]* {file}[/yellow]" 
+                unstaged_content = "\n".join(f"[yellow]* {file[0]} ({file[1]})[/yellow]" 
                                            for file in analysis["unstaged_changes"])
             
             untracked_content = ""
@@ -804,16 +804,13 @@ class AylaCli:
             # Afficher les détails par fichier
             self.ui.print_info("\n[bold cyan]=== Détails par Fichier ===[/bold cyan]")
             file_details = []
-            for detail in sorted(
-                analysis["file_details"],
-                key=lambda x: x["total_changes"],
-                reverse=True
-            ):
+            for file_path, details in analysis["file_details"].items():
+                total_changes = details["added"] + details["deleted"]
                 file_details.append(
-                    f"[bold]{detail['file']}[/bold]\n"
-                    f"  [green]+ {detail['additions']}[/green] "
-                    f"[red]- {detail['deletions']}[/red] "
-                    f"([yellow]{detail['total_changes']} changements[/yellow])"
+                    f"[bold]{file_path}[/bold]\n"
+                    f"  [green]+ {details['added']}[/green] "
+                    f"[red]- {details['deleted']}[/red] "
+                    f"([yellow]{total_changes} changements[/yellow])"
                 )
             
             if file_details:
@@ -823,65 +820,41 @@ class AylaCli:
                     border_style="cyan"
                 ).renderable)
             
-            # Afficher le contenu des modifications
-            if "content_changes" in analysis:
-                self.ui.print_info("\n[bold cyan]=== Contenu des Modifications ===[/bold cyan]")
-                for file_change in analysis["content_changes"]:
-                    file_content = []
-                    file_content.append(f"[bold white]{file_change['file']}[/bold white]\n")
+            # Afficher l'analyse d'impact
+            if analysis["impact_analysis"]:
+                self.ui.print_info("\n[bold cyan]=== Analyse d'Impact ===[/bold cyan]")
+                
+                for file_path, impact in analysis["impact_analysis"].items():
+                    # Niveau de risque avec code couleur
+                    risk_color = {
+                        "low": "green",
+                        "medium": "yellow",
+                        "high": "red"
+                    }.get(impact["risk_level"], "white")
                     
-                    for change in file_change["changes"]:
-                        if change["type"] == "position":
-                            file_content.append(f"[dim]{change['content']}[/dim]")
-                        elif change["type"] == "addition":
-                            file_content.append(f"[green]+{change['content']}[/green]")
-                        elif change["type"] == "deletion":
-                            file_content.append(f"[red]-{change['content']}[/red]")
-                        elif change["type"] == "context":
-                            file_content.append(f" {change['content']}")
+                    impact_content = [
+                        f"[bold]{file_path}[/bold]",
+                        f"[bold]Niveau de risque :[/bold] [{risk_color}]{impact['risk_level'].upper()}[/{risk_color}]"
+                    ]
+                    
+                    if impact["reasons"]:
+                        impact_content.append("\n[bold]Raisons :[/bold]")
+                        impact_content.extend(
+                            f"  [yellow]• {reason}[/yellow]" 
+                            for reason in impact["reasons"]
+                        )
+                    
+                    if impact["suggestions"]:
+                        impact_content.append("\n[bold]Suggestions :[/bold]")
+                        impact_content.extend(
+                            f"  [green]> {suggestion}[/green]" 
+                            for suggestion in impact["suggestions"]
+                        )
                     
                     self.ui.print_info(Panel(
-                        "\n".join(file_content),
-                        border_style="blue"
+                        "\n".join(impact_content),
+                        border_style="cyan"
                     ).renderable)
-            
-            # Afficher l'analyse d'impact
-            self.ui.print_info("\n[bold cyan]=== Analyse d'Impact ===[/bold cyan]")
-            impact = analysis["impact_analysis"]
-            
-            # Niveau de risque avec code couleur
-            risk_color = {
-                "low": "green",
-                "medium": "yellow",
-                "high": "red"
-            }.get(impact["risk_level"], "white")
-            
-            impact_content = [
-                f"[bold]Niveau de risque :[/bold] [{risk_color}]{impact['risk_level'].upper()}[/{risk_color}]"
-            ]
-            
-            if impact["affected_components"]:
-                impact_content.append("\n[bold]Composants affectés :[/bold]")
-                impact_content.extend(f"  • {comp}" for comp in impact["affected_components"])
-            
-            if impact["potential_risks"]:
-                impact_content.append("\n[bold]Risques potentiels :[/bold]")
-                impact_content.extend(
-                    f"  [red]! {risk}[/red]" for risk in impact["potential_risks"]
-                )
-            
-            if impact["suggestions"]:
-                impact_content.append("\n[bold]Suggestions :[/bold]")
-                impact_content.extend(
-                    f"  [green]> {suggestion}[/green]" 
-                    for suggestion in impact["suggestions"]
-                )
-            
-            self.ui.print_info(Panel(
-                "\n".join(impact_content),
-                title="Analyse des risques et recommandations",
-                border_style="cyan"
-            ).renderable)
             
             return True
         else:
@@ -1109,35 +1082,30 @@ class AylaCli:
 
     def _display_git_analysis(self, analysis: Dict[str, Any]) -> None:
         """Affiche l'analyse Git de manière formatée"""
-        # Afficher le résumé
-        self.ui.print_info("\n[bold cyan]=== Résumé des Changements ===[/bold cyan]")
-        summary = analysis["summary"]
-        self.ui.print_info(Panel(
-            f"[white]Fichiers modifiés : [bold]{summary['files_changed']}[/bold]\n"
-            f"Lignes ajoutées   : [bold green]+{summary['insertions']}[/bold green]\n"
-            f"Lignes supprimées : [bold red]-{summary['deletions']}[/bold red][/white]",
-            title="Statistiques",
-            border_style="cyan"
-        ).renderable)
-        
         # Afficher les changements par statut
         self.ui.print_info("\n[bold cyan]=== État des Fichiers ===[/bold cyan]")
         
         # Créer des sections pour chaque type de changement
         staged_content = ""
         if analysis["staged_changes"]:
-            staged_content = "\n".join(f"[green]+ {file}[/green]" 
-                                     for file in analysis["staged_changes"])
+            staged_content = "\n".join(
+                f"[green]+ {file[0]} ({file[1]})[/green]" 
+                for file in analysis["staged_changes"]
+            )
         
         unstaged_content = ""
         if analysis["unstaged_changes"]:
-            unstaged_content = "\n".join(f"[yellow]* {file}[/yellow]" 
-                                       for file in analysis["unstaged_changes"])
+            unstaged_content = "\n".join(
+                f"[yellow]* {file[0]} ({file[1]})[/yellow]" 
+                for file in analysis["unstaged_changes"]
+            )
         
         untracked_content = ""
         if analysis["untracked_files"]:
-            untracked_content = "\n".join(f"[dim]? {file}[/dim]" 
-                                        for file in analysis["untracked_files"])
+            untracked_content = "\n".join(
+                f"[dim]? {file}[/dim]" 
+                for file in analysis["untracked_files"]
+            )
         
         # Afficher les sections dans des panels
         if staged_content:
@@ -1164,16 +1132,13 @@ class AylaCli:
         # Afficher les détails par fichier
         self.ui.print_info("\n[bold cyan]=== Détails par Fichier ===[/bold cyan]")
         file_details = []
-        for detail in sorted(
-            analysis["file_details"],
-            key=lambda x: x["total_changes"],
-            reverse=True
-        ):
+        for file_path, details in analysis["file_details"].items():
+            total_changes = details["added"] + details["deleted"]
             file_details.append(
-                f"[bold]{detail['file']}[/bold]\n"
-                f"  [green]+ {detail['additions']}[/green] "
-                f"[red]- {detail['deletions']}[/red] "
-                f"([yellow]{detail['total_changes']} changements[/yellow])"
+                f"[bold]{file_path}[/bold]\n"
+                f"  [green]+ {details['added']}[/green] "
+                f"[red]- {details['deleted']}[/red] "
+                f"([yellow]{total_changes} changements[/yellow])"
             )
         
         if file_details:
@@ -1184,40 +1149,37 @@ class AylaCli:
             ).renderable)
         
         # Afficher l'analyse d'impact
-        if "impact_analysis" in analysis:
+        if analysis["impact_analysis"]:
             self.ui.print_info("\n[bold cyan]=== Analyse d'Impact ===[/bold cyan]")
-            impact = analysis["impact_analysis"]
             
-            # Niveau de risque avec code couleur
-            risk_color = {
-                "low": "green",
-                "medium": "yellow",
-                "high": "red"
-            }.get(impact.get("risk_level", "unknown"), "white")
-            
-            impact_content = [
-                f"[bold]Niveau de risque :[/bold] [{risk_color}]{impact.get('risk_level', 'UNKNOWN').upper()}[/{risk_color}]"
-            ]
-            
-            if impact.get("affected_components"):
-                impact_content.append("\n[bold]Composants affectés :[/bold]")
-                impact_content.extend(f"  • {comp}" for comp in impact["affected_components"])
-            
-            if impact.get("potential_risks"):
-                impact_content.append("\n[bold]Risques potentiels :[/bold]")
-                impact_content.extend(
-                    f"  [red]! {risk}[/red]" for risk in impact["potential_risks"]
-                )
-            
-            if impact.get("suggestions"):
-                impact_content.append("\n[bold]Suggestions :[/bold]")
-                impact_content.extend(
-                    f"  [green]> {suggestion}[/green]" 
-                    for suggestion in impact["suggestions"]
-                )
-            
-            self.ui.print_info(Panel(
-                "\n".join(impact_content),
-                title="Analyse des risques et recommandations",
-                border_style="cyan"
-            ).renderable)
+            for file_path, impact in analysis["impact_analysis"].items():
+                # Niveau de risque avec code couleur
+                risk_color = {
+                    "low": "green",
+                    "medium": "yellow",
+                    "high": "red"
+                }.get(impact["risk_level"], "white")
+                
+                impact_content = [
+                    f"[bold]{file_path}[/bold]",
+                    f"[bold]Niveau de risque :[/bold] [{risk_color}]{impact['risk_level'].upper()}[/{risk_color}]"
+                ]
+                
+                if impact["reasons"]:
+                    impact_content.append("\n[bold]Raisons :[/bold]")
+                    impact_content.extend(
+                        f"  [yellow]• {reason}[/yellow]" 
+                        for reason in impact["reasons"]
+                    )
+                
+                if impact["suggestions"]:
+                    impact_content.append("\n[bold]Suggestions :[/bold]")
+                    impact_content.extend(
+                        f"  [green]> {suggestion}[/green]" 
+                        for suggestion in impact["suggestions"]
+                    )
+                
+                self.ui.print_info(Panel(
+                    "\n".join(impact_content),
+                    border_style="cyan"
+                ).renderable)

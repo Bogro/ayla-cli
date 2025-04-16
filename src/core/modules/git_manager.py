@@ -3,6 +3,7 @@ import subprocess
 from typing import Dict, List, Optional, Tuple, Any
 import re
 import time
+from datetime import datetime
 
 from src.core.ui import UI
 
@@ -23,43 +24,216 @@ class GitManager:
     def set_repo_path(self, path: str) -> bool:
         """Définit le chemin du dépôt Git et vérifie s'il s'agit d'un dépôt valide"""
         if not os.path.isdir(path):
-            self.ui.print_error(f"Le chemin {path} n'est pas un répertoire valide")
+            self.ui.print_error(
+                f"Le chemin {path} n'est pas un répertoire valide"
+            )
             return False
 
         self.repo_path = path
-        self.is_git_repo = self._is_git_repository()
+        self.is_git_repo = self._check_is_git_repo()
 
         if self.is_git_repo:
             self.current_branch = self._get_current_branch()
             self.refresh_repo_info()
             return True
         else:
-            self.ui.print_warning(f"Le répertoire {path} n'est pas un dépôt Git valide")
+            self.ui.print_warning(
+                f"Le répertoire {path} n'est pas un dépôt Git valide"
+            )
             return False
 
-    def _is_git_repository(self) -> bool:
-        """Vérifie si le répertoire est un dépôt Git valide"""
-        git_dir = os.path.join(self.repo_path, '.git')
-        return os.path.isdir(git_dir)
-
-    def _run_git_command(self, command: List[str], cwd: Optional[str] = None) -> Tuple[bool, str]:
-        """Exécute une commande Git et retourne le résultat"""
+    def _check_is_git_repo(self) -> bool:
+        """
+        Vérifie si le répertoire actuel est un dépôt Git valide.
+        """
         try:
-            working_dir = cwd if cwd else self.repo_path
             result = subprocess.run(
-                ['git'] + command,
-                cwd=working_dir,
+                ['git', 'rev-parse', '--is-inside-work-tree'],
+                cwd=self.repo_path,
                 capture_output=True,
-                text=True,
-                check=False
+                text=True
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def _get_current_branch(self) -> str:
+        """Récupère le nom de la branche courante"""
+        try:
+            result = subprocess.run(
+                ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception:
+            pass
+        return "unknown"
+
+    def _run_git_command(
+        self,
+        args: List[str],
+        capture_output: bool = True
+    ) -> Tuple[bool, str]:
+        """
+        Exécute une commande Git et retourne le résultat
+        
+        Args:
+            args: Liste des arguments de la commande Git
+            capture_output: Si True, capture la sortie de la commande
+        
+        Returns:
+            Tuple contenant le succès (bool) et la sortie (str)
+        """
+        try:
+            cmd = ['git'] + args
+            result = subprocess.run(
+                cmd,
+                cwd=self.repo_path,
+                capture_output=capture_output,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                output = result.stdout.strip() if capture_output else ""
+                return True, output
+            else:
+                error = result.stderr.strip() if capture_output else ""
+                return False, error
+                
+        except Exception as e:
+            return False, str(e)
+
+    def _get_repo_status(self) -> Dict[str, Any]:
+        """Récupère le statut du dépôt Git"""
+        status = {
+            'is_clean': True,
+            'staged_changes': [],
+            'unstaged_changes': [],
+            'untracked_files': []
+        }
+
+        try:
+            # Vérifier les fichiers modifiés et stagés
+            result = subprocess.run(
+                ['git', 'status', '--porcelain'],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True
             )
 
             if result.returncode == 0:
-                return True, result.stdout.strip()
-            else:
-                return False, result.stderr.strip()
+                for line in result.stdout.splitlines():
+                    if not line:
+                        continue
+                        
+                    status_code = line[:2]
+                    file_path = line[3:]
+                    
+                    if status_code[0] != ' ':
+                        status['staged_changes'].append(
+                            (file_path, status_code[0])
+                        )
+                    if status_code[1] != ' ':
+                        status['unstaged_changes'].append(
+                            (file_path, status_code[1])
+                        )
+                    if status_code == '??':
+                        status['untracked_files'].append(file_path)
+
+                status['is_clean'] = (
+                    not status['staged_changes']
+                    and not status['unstaged_changes']
+                    and not status['untracked_files']
+                )
+
         except Exception as e:
-            return False, str(e)
+            self.ui.print_error(f"Erreur lors de la vérification du statut: {e}")
+
+        return status
+
+    def _get_branches(self) -> List[str]:
+        """
+        Récupère la liste des branches du dépôt Git.
+        
+        Returns:
+            Liste des noms de branches
+        """
+        if not self.is_git_repo:
+            return []
+            
+        success, output = self._run_git_command(['branch', '--list'])
+        if not success:
+            return []
+            
+        # Parser la sortie pour extraire les noms de branches
+        branches = []
+        for line in output.splitlines():
+            if not line:
+                continue
+            # Enlever le marqueur de branche courante (*) et les espaces
+            branch_name = line.strip().replace('* ', '')
+            if branch_name:
+                branches.append(branch_name)
+                
+        return branches
+
+    def _get_remotes(self) -> List[str]:
+        """Récupère la liste des remotes du dépôt Git"""
+        if not self.is_git_repo:
+            return []
+            
+        success, output = self._run_git_command(['remote', '-v'])
+        if not success:
+            return []
+            
+        # Parser la sortie pour extraire les noms de remotes
+        remotes = []
+        for line in output.splitlines():
+            if not line:
+                continue
+            # Enlever les espaces et extraire le nom du remote
+            remote_name = line.split()[0]
+            if remote_name:
+                remotes.append(remote_name)
+                
+        return remotes
+
+    def _get_stashes(self) -> List[Dict[str, str]]:
+        """
+        Récupère la liste des stashes Git avec leurs détails.
+        
+        Returns:
+            Liste de dictionnaires contenant les informations de chaque stash
+        """
+        if not self.is_git_repo:
+            return []
+            
+        success, output = self._run_git_command(
+            ['stash', 'list', '--format=%gd|%h|%cr|%s']
+        )
+        if not success:
+            return []
+            
+        stashes = []
+        for line in output.splitlines():
+            if not line:
+                continue
+                
+            # Format attendu: stash@{0}|hash|date|message
+            parts = line.split('|')
+            if len(parts) >= 4:
+                stash = {
+                    "ref": parts[0],
+                    "hash": parts[1],
+                    "date": parts[2],
+                    "message": parts[3]
+                }
+                stashes.append(stash)
+                
+        return stashes
 
     def refresh_repo_info(self) -> Dict[str, Any]:
         """Rafraîchit les informations du dépôt Git"""
@@ -83,115 +257,44 @@ class GitManager:
 
         return self.repo_info
 
-    def _get_current_branch(self) -> str:
-        """Obtient la branche actuelle"""
-        success, output = self._run_git_command(['branch', '--show-current'])
-        return output if success else "unknown"
-
-    def _get_repo_status(self) -> Dict[str, Any]:
-        """Obtient le statut du dépôt"""
-        success, output = self._run_git_command(['status', '--porcelain'])
-
-        status = {
-            'is_clean': not output,
-            'modified': [],
-            'untracked': [],
-            'staged': [],
-            'raw': output
-        }
-
-        if not success:
-            return status
-
-        for line in output.split('\n'):
-            if not line:
-                continue
-
-            status_code = line[:2]
-            file_path = line[3:]
-
-            if status_code[0] == '?':
-                status['untracked'].append(file_path)
-            elif status_code[0] in 'MADRCU':
-                status['staged'].append(file_path)
-            if status_code[1] in 'MADRCU':
-                status['modified'].append(file_path)
-
-        return status
-
     def _get_last_commit(self) -> Dict[str, str]:
         """Obtient les informations sur le dernier commit"""
-        success, output = self._run_git_command(['log', '-1', '--pretty=format:%h|%an|%ad|%s'])
-
-        if not success or not output:
-            return {'hash': '', 'author': '', 'date': '', 'message': ''}
-
-        parts = output.split('|', 3)
-        if len(parts) != 4:
-            return {'hash': '', 'author': '', 'date': '', 'message': ''}
-
-        return {
-            'hash': parts[0],
-            'author': parts[1],
-            'date': parts[2],
-            'message': parts[3]
+        commit_info = {
+            'hash': "",
+            'message': "",
+            'author': "",
+            'date': ""
         }
 
-    def _get_branches(self) -> List[str]:
-        """Obtient la liste des branches"""
-        success, output = self._run_git_command(['branch'])
+        if not self.is_git_repo:
+            return commit_info
 
-        if not success:
-            return []
+        # Hash et message
+        cmd = ['log', '-1', '--pretty=format:%h%n%s']
+        success, output = self._run_git_command(cmd)
+        if success and output:
+            hash_msg = output.split('\n')
+            if len(hash_msg) >= 2:
+                commit_info['hash'] = hash_msg[0]
+                commit_info['message'] = hash_msg[1]
 
-        branches = []
-        for line in output.split('\n'):
-            if line.strip():
-                # Enlever l'astérisque et les espaces de début
-                branches.append(re.sub(r'^\*?\s*', '', line))
+        # Auteur et date
+        fmt = '%an%n%ad'
+        cmd = ['log', '-1', f'--pretty=format:{fmt}', '--date=local']
+        success, output = self._run_git_command(cmd)
+        if success and output:
+            author_date = output.split('\n')
+            if len(author_date) >= 2:
+                commit_info['author'] = author_date[0]
+                commit_info['date'] = author_date[1]
 
-        return branches
+        return commit_info
 
-    def _get_remotes(self) -> Dict[str, str]:
-        """Obtient la liste des remotes"""
-        success, output = self._run_git_command(['remote', '-v'])
-
-        if not success:
-            return {}
-
-        remotes = {}
-        for line in output.split('\n'):
-            if not line:
-                continue
-
-            parts = line.split()
-            if len(parts) >= 2 and '(fetch)' in line:
-                remotes[parts[0]] = parts[1]
-
-        return remotes
-
-    def _get_stashes(self) -> List[Dict[str, str]]:
-        """Obtient la liste des stashes"""
-        success, output = self._run_git_command(['stash', 'list'])
-
-        if not success:
-            return []
-
-        stashes = []
-        for line in output.split('\n'):
-            if not line:
-                continue
-
-            match = re.match(r'stash@\{(\d+)\}: (.*)', line)
-            if match:
-                stashes.append({
-                    'index': match.group(1),
-                    'description': match.group(2)
-                })
-
-        return stashes
-
-    def commit_changes(self, message: str, files: Optional[List[str]] = None) -> bool:
+    def commit_changes(
+        self,
+        message: str,
+        files: Optional[List[str]] = None
+    ) -> bool:
         """Crée un commit avec les changements"""
         if not self.is_git_repo:
             self.ui.print_error("Vous n'êtes pas dans un dépôt Git valide")
@@ -208,12 +311,16 @@ class GitManager:
             for file in files:
                 success, output = self._run_git_command(['add', file])
                 if not success:
-                    self.ui.print_error(f"Erreur lors de l'ajout du fichier {file}: {output}")
+                    self.ui.print_error(
+                        f"Erreur lors de l'ajout du fichier {file}: {output}"
+                    )
                     return False
         else:
             success, output = self._run_git_command(['add', '.'])
             if not success:
-                self.ui.print_error(f"Erreur lors de l'ajout des fichiers: {output}")
+                self.ui.print_error(
+                    f"Erreur lors de l'ajout des fichiers: {output}"
+                )
                 return False
 
         # Créer le commit
@@ -224,7 +331,9 @@ class GitManager:
             self.refresh_repo_info()
             return True
         else:
-            self.ui.print_error(f"Erreur lors de la création du commit: {output}")
+            self.ui.print_error(
+                f"Erreur lors de la création du commit: {output}"
+            )
             return False
 
     def switch_branch(self, branch_name: str, create: bool = False) -> bool:
@@ -1143,8 +1252,7 @@ Voici le diff :
             return {"error": "Vous n'êtes pas dans un dépôt Git valide"}
 
         # Obtenir la date de début (il y a 'days' jours)
-        import datetime
-        start_date = datetime.datetime.now() - datetime.timedelta(days=days)
+        start_date = datetime.now() - datetime.timedelta(days=days)
         start_date_str = start_date.strftime("%Y-%m-%d")
 
         # Récupérer les commits sur cette période
@@ -1248,7 +1356,7 @@ Voici le diff :
         retrospective = {
             "period": {
                 "start_date": start_date_str,
-                "end_date": datetime.datetime.now().strftime("%Y-%m-%d"),
+                "end_date": datetime.now().strftime("%Y-%m-%d"),
                 "days": days
             },
             "summary": {
@@ -1574,7 +1682,6 @@ Voici le diff :
         ])
         if success:
             from collections import Counter
-            import os
             extensions = Counter(
                 os.path.splitext(f)[1] for f in output.split('\n') if f.strip()
             )
@@ -1678,204 +1785,198 @@ Réponds avec une liste concise de 3-5 insights importants.
 
     def analyze_changes(self) -> Dict[str, Any]:
         """
-        Analyse détaillée des changements en cours dans le dépôt.
-        
-        Returns :
-            Dict[str, Any] : Analyse des changements avec statistiques et détails
+        Analyse les changements dans le dépôt Git.
+        Retourne un dictionnaire contenant les détails de l'analyse.
         """
-        if not self.is_git_repo:
-            return {
-                "error": "Le répertoire n'est pas un dépôt Git valide"
-            }
-            
         analysis = {
-            "summary": {
-                "files_changed": 0,
-                "insertions": 0,
-                "deletions": 0
-            },
+            "summary": "",
             "staged_changes": [],
             "unstaged_changes": [],
             "untracked_files": [],
-            "file_details": [],
-            "impact_analysis": {},
-            "content_changes": []  # Nouveau champ pour le contenu des modifications
+            "file_details": {},
+            "impact_analysis": {}
         }
-        
+
+        if not self.is_git_repo:
+            msg = (
+                "Le répertoire actuel n'est pas un dépôt Git valide. "
+                "Veuillez initialiser Git d'abord."
+            )
+            self.ui.print_warning(msg)
+            return analysis
+
         # Obtenir le statut des fichiers
         status = self._get_repo_status()
-        analysis["staged_changes"] = status["staged"]
-        analysis["unstaged_changes"] = status["modified"]
-        analysis["untracked_files"] = status["untracked"]
-        
+        analysis["staged_changes"] = status["staged_changes"]
+        analysis["unstaged_changes"] = status["unstaged_changes"]
+        analysis["untracked_files"] = status["untracked_files"]
+
         # Obtenir les statistiques détaillées
-        success, output = self._run_git_command([
-            'diff', '--numstat'
-        ])
-        
+        success, output = self._run_git_command(['diff', '--numstat'])
         if success:
-            for line in output.split('\n'):
-                if line.strip():
-                    try:
-                        additions, deletions, filepath = line.split('\t')
-                        if additions != '-' and deletions != '-':
-                            analysis["summary"]["insertions"] += int(additions)
-                            analysis["summary"]["deletions"] += int(deletions)
-                            analysis["file_details"].append({
-                                "file": filepath,
-                                "additions": int(additions),
-                                "deletions": int(deletions),
-                                "total_changes": int(additions) + int(deletions)
-                            })
-                    except ValueError:
-                        continue
-                        
-        analysis["summary"]["files_changed"] = len(analysis["file_details"])
-        
-        # Obtenir le contenu des modifications
-        success, diff_output = self._run_git_command([
-            'diff', '--unified=3'  # Afficher 3 lignes de contexte
-        ])
-        
-        if success and diff_output:
-            current_file = None
-            current_changes = []
-            
-            for line in diff_output.split('\n'):
-                if line.startswith('diff --git'):
-                    # Nouveau fichier, sauvegarder les changements précédents
-                    if current_file and current_changes:
-                        analysis["content_changes"].append({
-                            "file": current_file,
-                            "changes": current_changes
-                        })
-                    # Extraire le nom du nouveau fichier
-                    current_file = line.split(' b/')[-1]
-                    current_changes = []
-                elif line.startswith('@@'):
-                    # Marqueur de position, on l'ajoute comme information
-                    current_changes.append({
-                        "type": "position",
-                        "content": line
-                    })
-                elif line.startswith('+'):
-                    # Ligne ajoutée
-                    current_changes.append({
-                        "type": "addition",
-                        "content": line[1:]
-                    })
-                elif line.startswith('-'):
-                    # Ligne supprimée
-                    current_changes.append({
-                        "type": "deletion",
-                        "content": line[1:]
-                    })
-                elif line.startswith(' '):
-                    # Ligne de contexte
-                    current_changes.append({
-                        "type": "context",
-                        "content": line[1:]
-                    })
-            
-            # Ajouter les derniers changements
-            if current_file and current_changes:
-                analysis["content_changes"].append({
-                    "file": current_file,
-                    "changes": current_changes
-                })
-        
-        # Analyser l'impact des changements
-        analysis["impact_analysis"] = self._analyze_change_impact()
-        
-        return analysis
-        
-    def _analyze_change_impact(self) -> Dict[str, Any]:
-        """Analyse l'impact des changements actuels."""
-        impact = {
-            "risk_level": "low",
-            "affected_components": [],
-            "potential_risks": [],
-            "suggestions": []
-        }
-        
-        # Obtenir les fichiers modifiés avec leur contenu
-        success, output = self._run_git_command([
-            'diff', '--unified=0'
-        ])
-        
-        if not success:
-            return impact
-            
-        # Analyser les modifications
+            for line in output.splitlines():
+                if not line:
+                    continue
+                parts = line.split()
+                if len(parts) >= 3:
+                    added, deleted, file = parts
+                    analysis["file_details"][file] = {
+                        "added": int(added) if added != '-' else 0,
+                        "deleted": int(deleted) if deleted != '-' else 0
+                    }
+
+        # Définir les motifs et fichiers à surveiller
         high_risk_patterns = [
-            'password', 'secret', 'token', 'api_key',
-            'database', 'config', 'security', 'auth'
+            r'config.*\..*',
+            r'.*password.*',
+            r'.*secret.*',
+            r'.*key.*',
+            r'.*credential.*'
         ]
-        
         critical_files = [
-            'requirements.txt', 'package.json', 'setup.py',
-            'config.py', 'settings.py', 'Dockerfile',
-            '.gitignore', '.env'
+            'requirements.txt',
+            'setup.py',
+            'package.json',
+            'Dockerfile',
+            '.env'
         ]
-        
-        # Identifier les composants affectés
-        components = set()
-        for file in self._get_repo_status()["modified"]:
-            component = file.split('/')[0] if '/' in file else 'root'
-            components.add(component)
-        impact["affected_components"] = list(components)
-        
-        # Évaluer le niveau de risque
-        risk_score = 0
-        
-        # Vérifier les patterns à risque
-        for pattern in high_risk_patterns:
-            if pattern in output.lower():
-                risk_score += 2
-                impact["potential_risks"].append(
-                    f"Modification de code lié à '{pattern}'"
+
+        def _analyze_change_impact(file_path: str) -> Dict[str, Any]:
+            impact = {
+                "risk_level": "low",
+                "reasons": [],
+                "suggestions": []
+            }
+
+            # Vérifier les motifs à haut risque
+            for pattern in high_risk_patterns:
+                if re.match(pattern, file_path.lower()):
+                    impact["risk_level"] = "high"
+                    msg = (
+                        "Le fichier correspond au motif sensible: "
+                        f"{pattern}"
+                    )
+                    impact["reasons"].append(msg)
+                    suggestion = (
+                        "Vérifier qu'aucune donnée sensible "
+                        "n'est exposée"
+                    )
+                    impact["suggestions"].append(suggestion)
+
+            # Vérifier les fichiers critiques
+            if file_path in critical_files:
+                impact["risk_level"] = "high"
+                msg = "Modification d'un fichier critique du projet"
+                impact["reasons"].append(msg)
+                suggestion = (
+                    "Examiner attentivement les changements "
+                    "de dépendances"
                 )
-                
-        # Vérifier les fichiers critiques
-        for file in critical_files:
-            if any(f.endswith(file) for f in self._get_repo_status()["modified"]):
-                risk_score += 3
-                impact["potential_risks"].append(
-                    f"Modification du fichier critique '{file}'"
-                )
-                
-        # Évaluer le nombre de fichiers modifiés
-        files_changed = len(self._get_repo_status()["modified"])
-        if files_changed > 10:
-            risk_score += 2
-            impact["potential_risks"].append(
-                "Nombre important de fichiers modifiés"
-            )
+                impact["suggestions"].append(suggestion)
+
+            # Vérifier les modifications importantes
+            if file_path in analysis["file_details"]:
+                details = analysis["file_details"][file_path]
+                total_changes = details["added"] + details["deleted"]
+                if total_changes > 100:
+                    impact["risk_level"] = "medium"
+                    msg = (
+                        f"Changements importants "
+                        f"({total_changes} lignes)"
+                    )
+                    impact["reasons"].append(msg)
+                    suggestion = "Envisager de diviser en plus petits commits"
+                    impact["suggestions"].append(suggestion)
+
+            return impact
+
+        # Analyser l'impact pour chaque fichier modifié
+        all_changes = (
+            status["staged_changes"] +
+            status["unstaged_changes"] +
+            status["untracked_files"]
+        )
+
+        def get_file_path(item):
+            """Extrait le chemin du fichier d'un élément de changement"""
+            return item[0] if isinstance(item, tuple) else item
+
+        for change in set(map(get_file_path, all_changes)):
+            analysis["impact_analysis"][change] = _analyze_change_impact(change)
+
+        return analysis
+
+    def get_status(self) -> str:
+        """
+        Retourne un résumé formaté de l'état du dépôt Git.
+        
+        Returns :
+            str : État formaté du dépôt Git
+        """
+        if not self.is_git_repo:
+            return "Le répertoire n'est pas un dépôt Git valide"
             
-        # Définir le niveau de risque
-        if risk_score > 8:
-            impact["risk_level"] = "high"
-        elif risk_score > 4:
-            impact["risk_level"] = "medium"
+        # Rafraîchir les informations du dépôt
+        self.refresh_repo_info()
+        
+        # Récupérer le statut détaillé
+        status = self._get_repo_status()
+        
+        # Préparer les sections du statut
+        sections = []
+        
+        # Branche actuelle et tracking
+        sections.append(f"Sur la branche {self.current_branch}")
+        
+        # Vérifier le remote tracking
+        branch_ref = f'{self.current_branch}@{{u}}'
+        cmd = ['rev-parse', '--abbrev-ref', branch_ref]
+        success, tracking = self._run_git_command(cmd)
+        if success:
+            sections.append(f"Suit : {tracking}")
             
-        # Générer des suggestions
-        if impact["risk_level"] == "high":
-            impact["suggestions"].extend([
-                "Envisager de diviser les changements en plusieurs commits",
-                "Effectuer une revue de code approfondie",
-                "Vérifier les implications de sécurité",
-                "Tester exhaustivement les modifications"
-            ])
-        elif impact["risk_level"] == "medium":
-            impact["suggestions"].extend([
-                "Documenter les changements importants",
-                "Ajouter des tests pour les nouvelles fonctionnalités",
-                "Vérifier la rétrocompatibilité"
-            ])
+            # Vérifier si la branche est à jour
+            cmd_ahead = ['rev-list', 'HEAD..@{u}', '--count']
+            cmd_behind = ['rev-list', '@{u}..HEAD', '--count']
+            success, ahead = self._run_git_command(cmd_ahead)
+            success2, behind = self._run_git_command(cmd_behind)
+            if success and success2:
+                if int(ahead) > 0:
+                    sections.append(f"En avance de {ahead} commit(s)")
+                if int(behind) > 0:
+                    sections.append(f"En retard de {behind} commit(s)")
+        
+        # État des fichiers
+        if status['is_clean']:
+            sections.append("\nRien à valider, la copie de travail est propre")
         else:
-            impact["suggestions"].extend([
-                "Ajouter des commentaires si nécessaire",
-                "Mettre à jour la documentation"
-            ])
+            # Fichiers indexés
+            if status["staged_changes"]:
+                sections.append("\nModifications qui seront validées :")
+                for f, status_code in status["staged_changes"]:
+                    is_new = f in status["untracked_files"]
+                    prefix = "  nouveau fichier : " if is_new else "  modifié : "
+                    sections.append(f"{prefix}{f} ({status_code})")
             
-        return impact
+            # Fichiers modifiés non indexés
+            if status["unstaged_changes"]:
+                sections.append("\nModifications qui ne seront pas validées :")
+                for f, status_code in status["unstaged_changes"]:
+                    sections.append(f"  modifié : {f} ({status_code})")
+            
+            # Fichiers non suivis
+            if status["untracked_files"]:
+                sections.append("\nFichiers non suivis:")
+                for f in status["untracked_files"]:
+                    sections.append(f"  {f}")
+        
+        # Dernier commit
+        last_commit = self._get_last_commit()
+        if last_commit["hash"]:
+            sections.append(f"\nDernier commit : {last_commit['hash']}")
+            sections.append(f"  {last_commit['message']}")
+            author = last_commit['author']
+            date = last_commit['date']
+            sections.append(f"  par {author} le {date}")
+        
+        return "\n".join(sections)
