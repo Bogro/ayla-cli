@@ -940,7 +940,7 @@ class AylaCli:
             f"Lignes supprimées : [bold red]-{summary['deletions']}[/bold red][/white]",
             title="Statistiques",
             border_style="cyan"
-        ))
+        ).renderable)
         
         # Afficher les changements par statut
         self.ui.print_info("\n[bold cyan]=== État des Fichiers ===[/bold cyan]")
@@ -967,21 +967,21 @@ class AylaCli:
                 staged_content,
                 title="[green]Fichiers indexés[/green]",
                 border_style="green"
-            ))
+            ).renderable)
         
         if unstaged_content:
             self.ui.print_info(Panel(
                 unstaged_content,
                 title="[yellow]Fichiers modifiés non indexés[/yellow]",
                 border_style="yellow"
-            ))
+            ).renderable)
         
         if untracked_content:
             self.ui.print_info(Panel(
                 untracked_content,
                 title="[dim]Fichiers non suivis[/dim]",
                 border_style="dim"
-            ))
+            ).renderable)
         
         # Afficher les détails par fichier
         self.ui.print_info("\n[bold cyan]=== Détails par Fichier ===[/bold cyan]")
@@ -1003,7 +1003,7 @@ class AylaCli:
                 "\n".join(file_details),
                 title="Modifications par fichier",
                 border_style="cyan"
-            ))
+            ).renderable)
         
         # Afficher l'analyse d'impact
         if "impact_analysis" in analysis:
@@ -1042,4 +1042,4 @@ class AylaCli:
                 "\n".join(impact_content),
                 title="Analyse des risques et recommandations",
                 border_style="cyan"
-            ))
+            ).renderable)
