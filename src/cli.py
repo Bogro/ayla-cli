@@ -507,9 +507,10 @@ class AylaCli:
         if hasattr(args, 'analyze') and args.analyze:
             # Analyser un fichier de code
             analyze = CodeAnalyzerHandler(self.client,
-                                        self.ui,
-                                        self.crew_manager,
-                                        api_key)
+                                          self.ui,
+                                          self.crew_manager,
+                                          api_key,
+                                          self.config)
             await analyze.process(args)
 
         elif hasattr(args, 'document') and args.document:
@@ -618,7 +619,11 @@ class AylaCli:
                     return "Erreur: Chemin du fichier requis"
                 args = parser_args or argparse.Namespace()
                 args.analyze = cmd_args
-                analyze = CodeAnalyzerHandler(self.client, self.ui, self.crew_manager, api_key)
+                analyze = CodeAnalyzerHandler(self.client,
+                                              self.ui,
+                                              self.crew_manager,
+                                              api_key,
+                                              self.config)
                 asyncio.create_task(analyze.process(args))
                 return
             elif cmd == "/document":
@@ -943,60 +948,12 @@ class AylaCli:
             elif args.git_analyze:
                 # Analyser le dépôt
                 analysis = await self.git_manager.analyze_repository(api_key)
-
-                # Vérifier s'il y a une erreur
-                if "error" in analysis:
-                    self.ui.print_error(analysis["error"])
-                    return True
-
-                # Afficher les informations générales
-                self.ui.print_info("\n=== Informations Générales ===")
-                info = analysis["general_info"]
-                self.ui.print_info(f"Branche actuelle : {info['current_branch']}")
-                self.ui.print_info(f"Nombre total de commits : {info['total_commits']}")
-                self.ui.print_info(f"Taille du dépôt : {info['repository_size']}")
-                self.ui.print_info(f"Date de création : {info['creation_date']}")
-
-                # Afficher l'activité
-                self.ui.print_info("\n=== Activité ===")
-                activity = analysis["activity"]
-                self.ui.print_info("Fréquence des commits :")
-                for period, count in activity["commit_frequency"].items():
-                    self.ui.print_info(f"- {period} : {count} commits")
-
-                # Afficher les branches
-                self.ui.print_info("\n=== Branches ===")
-                branches = analysis["branches"]
-                self.ui.print_info(f"Nombre total de branches : {branches['total_count']}")
-                self.ui.print_info(f"Branches actives : {len(branches['active_branches'])}")
-                self.ui.print_info(f"Branches fusionnées : {len(branches['merged_branches'])}")
-
-                # Afficher les contributeurs
-                self.ui.print_info("\n=== Contributeurs ===")
-                contributors = analysis["contributors"]
-                self.ui.print_info(f"Nombre total : {contributors['total_count']}")
-                if contributors['top_contributors']:
-                    self.ui.print_info("Top contributeurs :")
-                    for contrib in contributors['top_contributors'][:3]:
-                        self.ui.print_info(f"- {contrib['name']} : {contrib['commits']} commits")
-
-                # Afficher la santé du code
-                self.ui.print_info("\n=== Santé du Code ===")
-                health = analysis["code_health"]
-                self.ui.print_info("Qualité des commits :")
-                quality = health["commit_quality"]
-                self.ui.print_info(f"- Messages descriptifs : {quality['descriptive_messages']}")
-                self.ui.print_info(f"- Commits conventionnels : {quality['conventional_commits']}")
-
-                # Afficher les insights IA
-                self.ui.print_info("\n=== Insights IA ===")
-                for insight in analysis["insights"]:
-                    self.ui.print_info(f"- {insight}")
+                self.git_manager.display_git_analysis(analysis)
 
             elif args.git_diff_analyze:
                 # Analyser les changements
                 analysis = self.git_manager.analyze_changes()
-                self._display_git_analysis(analysis)
+                self.git_manager.display_git_analysis(analysis, 'diff')
 
             elif args.git_conventional_commit:
                 # Générer un message de commit conventionnel
@@ -1076,7 +1033,7 @@ class AylaCli:
                     # Générer une rétrospective
                     days = args.git_retrospective if isinstance(args.git_retrospective, int) else 14
                     retro = self.git_manager.generate_sprint_retrospective(days=days)
-                    self._display_git_retrospective(retro)
+                    self.git_manager.display_git_analysis(retro, 'retro')
                 except Exception as e:
                     self.ui.print_info(str(e))
 
@@ -1085,184 +1042,3 @@ class AylaCli:
         except Exception as e:
             self.ui.print_error(f"Erreur lors du traitement de la commande Git: {str(e)}")
             return True
-
-    def _display_git_analysis(self, analysis: Dict[str, Any]) -> None:
-        """Affiche l'analyse Git de manière formatée"""
-        # Afficher les changements par statut
-        self.ui.print_info("\n[bold cyan]=== État des Fichiers ===[/bold cyan]")
-        
-        # Créer des sections pour chaque type de changement
-        staged_content = ""
-        if analysis["staged_changes"]:
-            staged_content = "\n".join(
-                f"[green]+ {file[0]} ({file[1]})[/green]" 
-                for file in analysis["staged_changes"]
-            )
-        
-        unstaged_content = ""
-        if analysis["unstaged_changes"]:
-            unstaged_content = "\n".join(
-                f"[yellow]* {file[0]} ({file[1]})[/yellow]" 
-                for file in analysis["unstaged_changes"]
-            )
-        
-        untracked_content = ""
-        if analysis["untracked_files"]:
-            untracked_content = "\n".join(
-                f"[dim]? {file}[/dim]" 
-                for file in analysis["untracked_files"]
-            )
-        
-        # Afficher les sections dans des panels
-        if staged_content:
-            self.ui.print_info(Panel(
-                staged_content,
-                title="[green]Fichiers indexés[/green]",
-                border_style="green"
-            ).renderable)
-        
-        if unstaged_content:
-            self.ui.print_info(Panel(
-                unstaged_content,
-                title="[yellow]Fichiers modifiés non indexés[/yellow]",
-                border_style="yellow"
-            ).renderable)
-        
-        if untracked_content:
-            self.ui.print_info(Panel(
-                untracked_content,
-                title="[dim]Fichiers non suivis[/dim]",
-                border_style="dim"
-            ).renderable)
-        
-        # Afficher les détails par fichier
-        self.ui.print_info("\n[bold cyan]=== Détails par Fichier ===[/bold cyan]")
-        file_details = []
-        for file_path, details in analysis["file_details"].items():
-            total_changes = details["added"] + details["deleted"]
-            file_details.append(
-                f"[bold]{file_path}[/bold]\n"
-                f"  [green]+ {details['added']}[/green] "
-                f"[red]- {details['deleted']}[/red] "
-                f"([yellow]{total_changes} changements[/yellow])"
-            )
-        
-        if file_details:
-            self.ui.print_info(Panel(
-                "\n".join(file_details),
-                title="Modifications par fichier",
-                border_style="cyan"
-            ).renderable)
-        
-        # Afficher l'analyse d'impact
-        if analysis["impact_analysis"]:
-            self.ui.print_info("\n[bold cyan]=== Analyse d'Impact ===[/bold cyan]")
-            
-            for file_path, impact in analysis["impact_analysis"].items():
-                # Niveau de risque avec code couleur
-                risk_color = {
-                    "low": "green",
-                    "medium": "yellow",
-                    "high": "red"
-                }.get(impact["risk_level"], "white")
-                
-                impact_content = [
-                    f"[bold]{file_path}[/bold]",
-                    f"[bold]Niveau de risque :[/bold] [{risk_color}]{impact['risk_level'].upper()}[/{risk_color}]"
-                ]
-                
-                if impact["reasons"]:
-                    impact_content.append("\n[bold]Raisons :[/bold]")
-                    impact_content.extend(
-                        f"  [yellow]• {reason}[/yellow]" 
-                        for reason in impact["reasons"]
-                    )
-                
-                if impact["suggestions"]:
-                    impact_content.append("\n[bold]Suggestions :[/bold]")
-                    impact_content.extend(
-                        f"  [green]> {suggestion}[/green]" 
-                        for suggestion in impact["suggestions"]
-                    )
-                
-                self.ui.print_info(Panel(
-                    "\n".join(impact_content),
-                    border_style="cyan"
-                ).renderable)
-
-    def _display_git_retrospective(self, retro: Dict[str, Any]) -> None:
-        """Affiche la rétrospective Git de manière formatée"""
-        # Période
-        period = retro["period"]
-        self.ui.print_info("\n[bold cyan]=== Période ===[/bold cyan]")
-        self.ui.print_info(Panel(
-            f"Du : [bold]{period['start_date']}[/bold]\n"
-            f"Au : [bold]{period['end_date']}[/bold]\n"
-            f"Durée : [bold]{period['days']} jours[/bold]",
-            border_style="cyan"
-        ).renderable)
-
-        # Résumé
-        summary = retro["summary"]
-        self.ui.print_info("\n[bold cyan]=== Résumé ===[/bold cyan]")
-        self.ui.print_info(Panel(
-            f"Commits totaux : [bold]{summary['total_commits']}[/bold]\n"
-            f"Auteurs actifs : [bold]{summary['active_authors']}[/bold]\n"
-            f"Commits par jour : [bold]{summary['commits_per_day']:.2f}[/bold]",
-            border_style="cyan"
-        ).renderable)
-
-        # Auteurs
-        self.ui.print_info("\n[bold cyan]=== Contributeurs ===[/bold cyan]")
-        for author, stats in retro["authors"].items():
-            self.ui.print_info(Panel(
-                f"[bold]{author}[/bold]\n"
-                f"Commits : [bold]{stats['commit_count']}[/bold]\n"
-                f"Premier commit : {stats['first_commit_date']}\n"
-                f"Dernier commit : {stats['last_commit_date']}",
-                border_style="blue"
-            ).renderable)
-
-        # Catégories de commits
-        self.ui.print_info("\n[bold cyan]=== Types de Commits ===[/bold cyan]")
-        categories = retro["categories"]
-        cat_content = []
-        for cat, count in categories.items():
-            cat_color = {
-                "fix": "red",
-                "feature": "green",
-                "refactor": "blue",
-                "chore": "yellow"
-            }.get(cat, "white")
-            cat_content.append(
-                f"[{cat_color}]{cat}[/{cat_color}] : [bold]{count}[/bold]"
-            )
-        self.ui.print_info(Panel(
-            "\n".join(cat_content),
-            border_style="cyan"
-        ).renderable)
-
-        # Statistiques des fichiers
-        self.ui.print_info("\n[bold cyan]=== Statistiques des Fichiers ===[/bold cyan]")
-        file_stats = retro["file_stats"]
-        self.ui.print_info(Panel(
-            f"Fichiers modifiés : [bold]{file_stats['files_changed']}[/bold]\n\n"
-            "[bold]Fichiers les plus modifiés :[/bold]",
-            border_style="cyan"
-        ).renderable)
-
-        for file in file_stats["most_changed_files"][:5]:
-            self.ui.print_info(Panel(
-                f"[bold]{file['file']}[/bold]\n"
-                f"[green]+ {file['additions']}[/green] "
-                f"[red]- {file['deletions']}[/red] "
-                f"([yellow]{file['changes']} changements[/yellow])",
-                border_style="blue"
-            ).renderable)
-
-        # Résumé global
-        self.ui.print_info("\n[bold cyan]=== Résumé Global ===[/bold cyan]")
-        self.ui.print_info(Panel(
-            file_stats["summary"],
-            border_style="cyan"
-        ).renderable)

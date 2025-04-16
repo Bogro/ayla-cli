@@ -6,8 +6,9 @@ from src.services.client import AnthropicClient
 
 class CodeAnalyzerHandler(BaseHandler):
 
-    def __init__(self, client, ui, crew_manager, api_key, ):
+    def __init__(self, client, ui, crew_manager, api_key, config):
         super().__init__(client, ui, crew_manager, api_key)
+        self.config = config
 
     async def process(self, args):
         """Analyse un fichier de code avec Ayla"""
