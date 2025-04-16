@@ -1072,10 +1072,13 @@ class AylaCli:
                     self.ui.print_info(str(e))
 
             elif args.git_retrospective:
-                # Générer une rétrospective
-                days = args.git_retrospective if isinstance(args.git_retrospective, int) else 14
-                retro = self.git_manager.generate_sprint_retrospective(days=days)
-                self.ui.print_info(retro)
+                try:
+                    # Générer une rétrospective
+                    days = args.git_retrospective if isinstance(args.git_retrospective, int) else 14
+                    retro = self.git_manager.generate_sprint_retrospective(days=days)
+                    self._display_git_retrospective(retro)
+                except Exception as e:
+                    self.ui.print_info(str(e))
 
             return True
 
@@ -1186,3 +1189,80 @@ class AylaCli:
                     "\n".join(impact_content),
                     border_style="cyan"
                 ).renderable)
+
+    def _display_git_retrospective(self, retro: Dict[str, Any]) -> None:
+        """Affiche la rétrospective Git de manière formatée"""
+        # Période
+        period = retro["period"]
+        self.ui.print_info("\n[bold cyan]=== Période ===[/bold cyan]")
+        self.ui.print_info(Panel(
+            f"Du : [bold]{period['start_date']}[/bold]\n"
+            f"Au : [bold]{period['end_date']}[/bold]\n"
+            f"Durée : [bold]{period['days']} jours[/bold]",
+            border_style="cyan"
+        ).renderable)
+
+        # Résumé
+        summary = retro["summary"]
+        self.ui.print_info("\n[bold cyan]=== Résumé ===[/bold cyan]")
+        self.ui.print_info(Panel(
+            f"Commits totaux : [bold]{summary['total_commits']}[/bold]\n"
+            f"Auteurs actifs : [bold]{summary['active_authors']}[/bold]\n"
+            f"Commits par jour : [bold]{summary['commits_per_day']:.2f}[/bold]",
+            border_style="cyan"
+        ).renderable)
+
+        # Auteurs
+        self.ui.print_info("\n[bold cyan]=== Contributeurs ===[/bold cyan]")
+        for author, stats in retro["authors"].items():
+            self.ui.print_info(Panel(
+                f"[bold]{author}[/bold]\n"
+                f"Commits : [bold]{stats['commit_count']}[/bold]\n"
+                f"Premier commit : {stats['first_commit_date']}\n"
+                f"Dernier commit : {stats['last_commit_date']}",
+                border_style="blue"
+            ).renderable)
+
+        # Catégories de commits
+        self.ui.print_info("\n[bold cyan]=== Types de Commits ===[/bold cyan]")
+        categories = retro["categories"]
+        cat_content = []
+        for cat, count in categories.items():
+            cat_color = {
+                "fix": "red",
+                "feature": "green",
+                "refactor": "blue",
+                "chore": "yellow"
+            }.get(cat, "white")
+            cat_content.append(
+                f"[{cat_color}]{cat}[/{cat_color}] : [bold]{count}[/bold]"
+            )
+        self.ui.print_info(Panel(
+            "\n".join(cat_content),
+            border_style="cyan"
+        ).renderable)
+
+        # Statistiques des fichiers
+        self.ui.print_info("\n[bold cyan]=== Statistiques des Fichiers ===[/bold cyan]")
+        file_stats = retro["file_stats"]
+        self.ui.print_info(Panel(
+            f"Fichiers modifiés : [bold]{file_stats['files_changed']}[/bold]\n\n"
+            "[bold]Fichiers les plus modifiés :[/bold]",
+            border_style="cyan"
+        ).renderable)
+
+        for file in file_stats["most_changed_files"][:5]:
+            self.ui.print_info(Panel(
+                f"[bold]{file['file']}[/bold]\n"
+                f"[green]+ {file['additions']}[/green] "
+                f"[red]- {file['deletions']}[/red] "
+                f"([yellow]{file['changes']} changements[/yellow])",
+                border_style="blue"
+            ).renderable)
+
+        # Résumé global
+        self.ui.print_info("\n[bold cyan]=== Résumé Global ===[/bold cyan]")
+        self.ui.print_info(Panel(
+            file_stats["summary"],
+            border_style="cyan"
+        ).renderable)

@@ -1249,7 +1249,7 @@ Voici le diff :
             Dictionnaire contenant les informations de rétrospective
         """
         if not self.is_git_repo:
-            return {"error": "Vous n'êtes pas dans un dépôt Git valide"}
+            raise Exception("Vous n'êtes pas dans un dépôt Git valide")
 
         # Obtenir la date de début (il y a 'days' jours)
         start_date = datetime.now() - timedelta(days=days)
@@ -1266,10 +1266,7 @@ Voici le diff :
         success, output = self._run_git_command(command)
 
         if not success or not output:
-            return {
-                "error": f"Aucun commit trouvé depuis {start_date_str}"
-                if not output else f"Erreur: {output}"
-            }
+            raise Exception(f"Aucun commit trouvé depuis {start_date_str}" if not output else f"Erreur: {output}")
 
         # Parser les commits
         commits = []
