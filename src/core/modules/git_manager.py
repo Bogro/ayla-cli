@@ -3,7 +3,7 @@ import subprocess
 from typing import Dict, List, Optional, Tuple, Any
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from src.core.ui import UI
 
@@ -1084,18 +1084,18 @@ Voici le diff :
             Dictionnaire contenant les informations sur les conflits et suggestions
         """
         if not self.is_git_repo:
-            return {"error": "Vous n'êtes pas dans un dépôt Git valide"}
+            raise Exception("Vous n'êtes pas dans un dépôt Git valide")
 
         # Vérifier si une fusion est en cours
         merge_head_path = os.path.join(self.repo_path, '.git', 'MERGE_HEAD')
         if not os.path.exists(merge_head_path):
-            return {"error": "Aucune fusion en cours"}
+            raise Exception("Aucune fusion en cours")
 
         # Obtenir la liste des fichiers en conflit
         success, output = self._run_git_command(['diff', '--name-only', '--diff-filter=U'])
 
         if not success:
-            return {"error": f"Erreur lors de la récupération des conflits: {output}"}
+            raise Exception(f"Erreur lors de la récupération des conflits: {output}")
 
         conflict_files = [f for f in output.strip().split('\n') if f]
 
@@ -1240,19 +1240,19 @@ Voici le diff :
         """
         Génère une rétrospective de sprint basée sur l'activité Git récente
 
-        Args:
-            days: Nombre de jours à inclure dans la rétrospective
-            include_stats: Si True, inclut des statistiques détaillées
-            categorize: Si True, catégorise les commits par type
+        Args :
+            days : Nombre de jours à inclure dans la rétrospective
+            include_stats : Si True, inclut des statistiques détaillées
+            categorize : Si True, catégorise les commits par type
 
-        Returns:
+        Returns :
             Dictionnaire contenant les informations de rétrospective
         """
         if not self.is_git_repo:
             return {"error": "Vous n'êtes pas dans un dépôt Git valide"}
 
         # Obtenir la date de début (il y a 'days' jours)
-        start_date = datetime.now() - datetime.timedelta(days=days)
+        start_date = datetime.now() - timedelta(days=days)
         start_date_str = start_date.strftime("%Y-%m-%d")
 
         # Récupérer les commits sur cette période

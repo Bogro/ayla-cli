@@ -1063,10 +1063,13 @@ class AylaCli:
 
             elif args.git_conflict_assist:
                 # Assister dans la résolution des conflits
-                conflicts = self.git_manager.assist_merge_conflicts(
-                    self.git_manager.current_branch
-                )
-                self.ui.print_info(conflicts)
+                try:
+                    conflicts = self.git_manager.assist_merge_conflicts(
+                        self.git_manager.current_branch
+                    )
+                    self.ui.print_info(conflicts)
+                except Exception as e:
+                    self.ui.print_info(str(e))
 
             elif args.git_retrospective:
                 # Générer une rétrospective
