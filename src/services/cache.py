@@ -3,7 +3,7 @@ import json
 import os
 import time
 
-from src.config import AylaConfig
+from src.config.config import AylaConfig
 
 
 class ResponseCache:

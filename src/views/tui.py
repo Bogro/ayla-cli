@@ -1,262 +1,6 @@
 import curses
-import sys
 import threading
 import time
-from typing import Dict, Tuple, List
-
-import os
-import re
-import math
-
-from rich.console import Console
-from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
-from rich.syntax import Syntax
-from rich.theme import Theme
-from rich.prompt import Prompt
-from rich.live import Live
-from rich.columns import Columns
-from rich.table import Table
-
-
-class UI:
-    """Gestion de l'interface utilisateur"""
-
-    def __init__(self):
-        """Initialise l'interface utilisateur"""
-        # Configuration des couleurs pour Rich
-        custom_theme = Theme({
-            "user": "bold cyan",
-            "assistant": "bold green",
-            "error": "bold red",
-            "warning": "yellow",
-            "info": "blue",
-            "success": "green",
-        })
-
-        self.console = Console(theme=custom_theme)
-
-    def print_success(self, message: str):
-        """Affiche un message d'erreur"""
-        self.console.print(f"[success]{message}[/success]")
-
-    def print_error(self, message: str):
-        """Affiche un message d'erreur"""
-        self.console.print(f"[error]{message}[/error]")
-
-    def print_warning(self, message: str):
-        """Affiche un message d'avertissement"""
-        self.console.print(f"[warning]{message}[/warning]")
-
-    def print_info(self, message: str):
-        """Affiche un message d'information"""
-        self.console.print(f"[info]{message}[/info]")
-
-    def print_user(self, message: str):
-        """Affiche un message de l'utilisateur"""
-        self.console.print(f"\n[user]Vous:[/user] {message}\n")
-
-    def get_input(self, prompt: str = "") -> str:
-        """Demande une entrée à l'utilisateur"""
-        return self.console.input(prompt)
-
-    def get_api_key_input(self) -> Tuple[str, bool]:
-        """Demande la clé API à l'utilisateur et s'il souhaite la sauvegarder"""
-        self.print_info("Aucune clé API Anthropic trouvée.")
-        api_key = self.get_input("[bold]Veuillez entrer votre clé API Anthropic: [/bold]")
-
-        if not api_key:
-            self.print_error("Aucune clé API fournie. Impossible de continuer.")
-            sys.exit(1)
-
-        # Demander si l'utilisateur souhaite sauvegarder la clé
-        save_key = self.get_input(
-            "[bold]Voulez-vous sauvegarder cette clé pour une utilisation future? (o/n): [/bold]").lower()
-
-        return api_key, save_key in ('o', 'oui')
-
-    def format_code_blocks(self, text: str) -> List:
-        """Détecte et formate les blocs de code dans le texte"""
-        lines = text.split('\n')
-        in_code_block = False
-        code_block_lines = []
-        language = ""
-        formatted_parts = []
-        current_text = []
-
-        for line in lines:
-            # Détection du début d'un bloc de code
-            if line.startswith("```") and not in_code_block:
-                # Ajouter le texte précédent s'il y en a
-                if current_text:
-                    formatted_parts.append("\n".join(current_text))
-                    current_text = []
-
-                in_code_block = True
-                language = line[3:].strip()  # Extraire le langage de programmation
-                continue
-
-            # Détection de la fin d'un bloc de code
-            elif line.startswith("```") and in_code_block:
-                in_code_block = False
-                # Créer un bloc de syntaxe colorée et l'ajouter aux parties formatées
-                code = "\n".join(code_block_lines)
-                syntax = Syntax(code, language or "text", theme="monokai", line_numbers=True)
-                formatted_parts.append(syntax)
-                code_block_lines = []
-                continue
-
-            # À l'intérieur d'un bloc de code
-            if in_code_block:
-                code_block_lines.append(line)
-            else:
-                current_text.append(line)
-
-        # Ajouter le texte restant s'il y en a
-        if current_text:
-            formatted_parts.append("\n".join(current_text))
-
-        return formatted_parts
-
-    def print_assistant_response(self, response: str, raw: bool = False):
-        """Affiche la réponse de l'assistant avec formatage"""
-        if raw:
-            print(response)
-            return
-
-        # Formater et afficher avec Rich
-        formatted_parts = self.format_code_blocks(response)
-
-        self.console.print("\n[assistant]Ayla:[/assistant]")
-        for part in formatted_parts:
-            if isinstance(part, str):
-                # Traiter le texte normal comme du markdown
-                md = Markdown(part)
-                self.console.print(md)
-            else:
-                # C'est déjà un objet Rich (bloc de code)
-                self.console.print(part)
-        self.console.print()
-
-    def display_conversation_history(self, history: List[Dict[str, str]]):
-        """Affiche l'historique d'une conversation"""
-        if not history:
-            self.print_info("Cette conversation ne contient aucun message.")
-            return
-
-        for i, message in enumerate(history):
-            role = message["role"]
-            content = message["content"]
-
-            if role == "user":
-                self.console.print(f"\n[user]Vous ({i + 1}):[/user]")
-                self.console.print(content)
-            else:
-                self.console.print(f"\n[assistant]Ayla ({i + 1}):[/assistant]")
-                formatted_parts = self.format_code_blocks(content)
-                for part in formatted_parts:
-                    if isinstance(part, str):
-                        md = Markdown(part)
-                        self.console.print(md)
-                    else:
-                        self.console.print(part)
-
-        self.console.print()
-
-    def show_conversations_list(self, conversations: List[Dict]):
-        """Affiche la liste des conversations sauvegardées"""
-        if not conversations:
-            self.print_info("Aucune conversation sauvegardée.")
-            return
-
-        self.console.print("\n[bold]Conversations sauvegardées:[/bold]")
-        for i, conv in enumerate(conversations):
-            self.console.print(f"[cyan]{i + 1}.[/cyan] [bold]{conv['id']}[/bold] - {conv['title']}")
-            self.console.print(
-                f"   [italic]{conv['messages']} messages | Dernière modification: {conv['last_modified']}[/italic]")
-
-        self.console.print()
-
-    def show_models_info(self, models: Dict[str, str]):
-        """Affiche la liste des modèles disponibles"""
-        self.console.print("\n[bold]Modèles Ayla disponibles:[/bold]")
-        for model, description in models.items():
-            self.console.print(f"[cyan]{model}[/cyan]: {description}")
-        self.console.print()
-
-    def show_interactive_help(self):
-        """Affiche l'aide pour le mode interactif"""
-        help_text = """
-        [bold]Commandes disponibles en mode interactif:[/bold]
-
-        /help, /?    : Affiche cette aide
-        /exit, /quit, /q : Quitte le mode interactif
-        /history     : Affiche l'historique de la conversation actuelle
-        /clear       : Efface l'historique de la conversation actuelle
-        /save [id]   : Sauvegarde la conversation avec un nouvel ID
-        /list        : Liste toutes les conversations sauvegardées
-        /load [id]   : Charge une conversation existante
-
-        [italic]Appuyez sur Ctrl+C pour quitter à tout moment.[/italic]
-        """
-        self.console.print(Panel(help_text, title="Aide", border_style="blue"))
-
-    def create_progress(self, message: str = "Ayla réfléchit...", transient: bool = True):
-        """Crée une barre de progression"""
-        progress = Progress(
-            SpinnerColumn(),
-            TextColumn(f"[info]{message}[/info]"),
-            transient=transient,
-        )
-        return progress
-
-    def display_conventional_commit(self, commit_data: Dict[str, str]) -> None:
-        """Affiche un message de commit conventionnel avec une mise en forme"""
-        # Afficher le résumé
-        self.console.print("\n[bold]Message de commit conventionnel[/bold]")
-        
-        # Afficher le type avec une couleur spécifique
-        commit_type = commit_data.get('type', 'chore')
-        type_color = {
-            'feat': 'green',
-            'fix': 'red',
-            'docs': 'blue',
-            'style': 'magenta',
-            'refactor': 'cyan',
-            'perf': 'yellow',
-            'test': 'green3',
-            'build': 'white',
-            'ci': 'white',
-            'chore': 'dim white'
-        }.get(commit_type, 'white')
-        
-        self.console.print(f"\n[bold cyan]Type:[/bold cyan] [{type_color}]{commit_type}[/{type_color}]")
-        
-        # Afficher le scope s'il existe
-        if 'scope' in commit_data and commit_data['scope']:
-            self.console.print(f"[bold cyan]Scope:[/bold cyan] {commit_data['scope']}")
-            
-        # Afficher la description
-        description = commit_data.get('description', 'Mise à jour du code')
-        self.console.print(f"[bold cyan]Description:[/bold cyan] {description}")
-        
-        # Afficher le corps s'il existe
-        if 'body' in commit_data and commit_data['body']:
-            self.console.print("\n[bold cyan]Corps:[/bold cyan]")
-            self.console.print(commit_data['body'])
-            
-        # Afficher les breaking changes s'ils existent
-        if 'breaking_change' in commit_data and commit_data['breaking_change']:
-            self.console.print("\n[bold red]BREAKING CHANGE:[/bold red]")
-            self.console.print(commit_data['breaking_change'])
-            
-        # Afficher le message formaté
-        if 'formatted' in commit_data and commit_data['formatted']:
-            self.console.print("\n[bold green]Message formaté:[/bold green]")
-            self.console.print(f"[bold]{commit_data['formatted']}[/bold]")
-            
-        self.console.print()
 
 
 class TUIManager:
@@ -403,23 +147,31 @@ class TUIManager:
                 "help": "Génère une rétrospective d'activité sur la période spécifiée"
             }
         }
-        
+
         # Ajouter les commandes Git à l'aide générale
         self.command_help.update(self.git_commands_help)
 
-    def start(self):
-        """Démarre l'interface TUI"""
-        # Lancer curses dans un wrapper qui gère le nettoyage
+        self.args = None
+        self.api_key = None
+
+    async def start(self, args=None, api_key=None):
+        """Démarre l'interface TUI de manière asynchrone"""
+        self.args = args
+        self.api_key = api_key
+        self.running = True
+
+        # Utiliser curses.wrapper pour gérer proprement l'initialisation/nettoyage
+        import curses
         curses.wrapper(self._main_loop)
 
     def _main_loop(self, stdscr):
-        """Boucle principale de l'interface"""
+        """Boucle principale de l'interface TUI"""
         # Initialiser l'écran
         self.screen = stdscr
-        self.running = True
         curses.curs_set(1)  # Afficher le curseur
         curses.use_default_colors()
 
+        # Activer les couleurs si disponibles
         if curses.has_colors():
             self._init_colors()
 
@@ -428,17 +180,25 @@ class TUIManager:
 
         # Boucle principale
         while self.running:
-            # Mesurer la taille de l'écran pour détecter les redimensionnements
-            new_y, new_x = self.screen.getmaxyx()
-            if new_y != self.max_y or new_x != self.max_x:
-                self.max_y, self.max_x = new_y, new_x
+            try:
+                # Mesurer la taille de l'écran pour détecter les redimensionnements
+                new_y, new_x = self.screen.getmaxyx()
+                if new_y != self.max_y or new_x != self.max_x:
+                    self.max_y, self.max_x = new_y, new_x
+                    self._setup_windows()
+                    self.screen.clear()
+                    self.screen.refresh()
+
+                # Afficher les composants
+                self._draw_interface()
+
+                # Traiter l'entrée utilisateur
+                self._process_input()
+
+            except curses.error:
+                # En cas d'erreur (comme un redimensionnement), reconfigurer l'interface
                 self._setup_windows()
-
-            # Afficher les composants
-            self._draw_interface()
-
-            # Traiter l'entrée utilisateur
-            self._process_input()
+                continue
 
     def _init_colors(self):
         """Initialise les paires de couleurs"""
@@ -484,12 +244,37 @@ class TUIManager:
 
     def _draw_command_line(self):
         """Dessine la ligne de commande"""
-        self.command_window.clear()
-        prompt = "> "
-        self.command_window.addstr(0, 0, prompt)
-        self.command_window.addstr(0, len(prompt), self.current_command)
-        self.command_window.move(0, len(prompt) + self.cursor_position)
-        self.command_window.refresh()
+        try:
+            self.command_window.clear()
+            prompt = "> "
+            max_width = self.command_window.getmaxyx()[1] - len(prompt) - 1
+
+            # Calculer la portion visible de la commande
+            visible_cmd = self.current_command
+            if len(visible_cmd) > max_width:
+                # Si le curseur est vers la fin, montrer la fin
+                if self.cursor_position > max_width:
+                    start = self.cursor_position - max_width + 10
+                    if start < 0:
+                        start = 0
+                    visible_cmd = self.current_command[start:start + max_width]
+                    self.cursor_position = len(visible_cmd)
+                else:
+                    visible_cmd = self.current_command[:max_width]
+
+            # Afficher le prompt et la commande
+            self.command_window.addstr(0, 0, prompt)
+            self.command_window.addstr(0, len(prompt), visible_cmd)
+
+            # Positionner le curseur
+            cursor_x = min(len(prompt) + self.cursor_position, self.command_window.getmaxyx()[1] - 1)
+            self.command_window.move(0, cursor_x)
+
+            self.command_window.refresh()
+        except curses.error:
+            # En cas d'erreur curses, essayer de restaurer un état cohérent
+            self.current_command = self.current_command[:self.command_window.getmaxyx()[1] - 2]
+            self.cursor_position = len(self.current_command)
 
     def _draw_help(self):
         """Dessine la zone d'aide contextuelle"""
@@ -657,6 +442,8 @@ class TUIManager:
             return
 
         # Ajouter la commande à l'historique
+        if not hasattr(self, 'command_history'):
+            self.command_history = []
         self.command_history.append(command)
         self.history_position = len(self.command_history)
 
@@ -665,7 +452,12 @@ class TUIManager:
 
         # Traiter la commande
         if command.startswith('/'):
-            self._process_command(command)
+            if not self.app_context:
+                self._add_to_output("Erreur: Contexte d'application non initialisé", color=4)
+                return
+            result = self.app_context.execute_tui_command(command, self.args, self.api_key)
+            if result:
+                self._add_to_output(result)
         else:
             self._process_question(command)
 
@@ -673,72 +465,23 @@ class TUIManager:
         self.current_command = ""
         self.cursor_position = 0
 
-    def _process_command(self, command):
-        """Traite une commande slash"""
-        parts = command.split(maxsplit=1)
-        cmd = parts[0].lower()
-        args = parts[1] if len(parts) > 1 else ""
-
-        try:
-            if cmd == '/quit':
-                self.running = False
-            elif cmd == '/clear':
-                self.output_window.clear()
-                self.output_window.refresh()
-            elif cmd == '/help':
-                self._show_full_help()
-            # Autres commandes seraient redirigées vers l'app_context
-            else:
-                if self.app_context:
-                    # Vérifier que la méthode execute_tui_command existe
-                    if not hasattr(self.app_context, 'execute_tui_command'):
-                        self._add_to_output(f"Erreur: La méthode execute_tui_command n'est pas disponible.", color=4)
-                        return
-
-                    # Méthode qui devrait être implémentée dans votre application
-                    # pour traiter les commandes TUI et retourner un résultat
-                    result = self.app_context.execute_tui_command(cmd, args)
-                    if result:
-                        self._add_to_output(result)
-                else:
-                    self._add_to_output(f"Commande non implémentée: {cmd}", color=3)
-        except Exception as e:
-            # Gérer les erreurs de traitement des commandes
-            error_message = f"Erreur lors de l'exécution de la commande {cmd}: {str(e)}"
-            self._add_to_output(error_message, color=4)
-
-            # Journaliser l'erreur pour le débogage
-            import traceback
-            trace = traceback.format_exc()
-            try:
-                with open("tui_command_error.log", "a") as f:
-                    import time
-                    f.write(f"\n--- Error at {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
-                    f.write(f"Command: {command}\n")
-                    f.write(f"Error: {str(e)}\n")
-                    f.write(trace + "\n")
-            except Exception:
-                pass
-
     def _process_question(self, question):
-        """Traite une question à envoyer"""
-        self._add_to_output("Ayla réfléchit...", color=3)
+        """Traite une question pour Claude"""
+        if not self.app_context:
+            self._add_to_output("Erreur: Contexte d'application non initialisé")
+            return
 
-        # Simuler une réponse asynchrone
-        if self.app_context:
-            # Lancer le traitement dans un thread pour ne pas bloquer l'interface
-            thread = threading.Thread(
-                target=self._async_question_handler,
-                args=(question,)
-            )
-            thread.daemon = True
-            thread.start()
-        else:
-            self._add_to_output("Mode simulation: Pas de connexion", color=3)
-            self._add_to_output("Voici une réponse simulée pour votre question.", color=1)
+        # Créer un thread pour le traitement asynchrone
+        thread = threading.Thread(
+            target=self._async_question_handler,
+            args=(question,)
+        )
+        thread.start()
 
     def _async_question_handler(self, question):
         """Gère l'envoi asynchrone de la question"""
+        import asyncio
+
         try:
             # Afficher un message d'attente
             # self._add_to_output("Envoi de votre question à Claude...", color=3)
@@ -753,9 +496,6 @@ class TUIManager:
             if not hasattr(self.app_context, 'send_question_to_claude'):
                 self._add_to_output("Erreur: Méthode d'envoi de question non disponible.", color=4)
                 return
-
-            # Utiliser asyncio pour exécuter la méthode asynchrone
-            import asyncio
 
             # Créer une nouvelle boucle d'événements pour ce thread
             loop = asyncio.new_event_loop()
@@ -778,14 +518,14 @@ class TUIManager:
             # Si la réponse est trop longue, découper en parties pour l'affichage
             if len(response) > 2000:
                 # Découper la réponse en parties de 1000 caractères maximum
-                parts = [response[i:i+1000] for i in range(0, len(response), 1000)]
+                parts = [response[i:i + 1000] for i in range(0, len(response), 1000)]
 
                 # Afficher un message d'information
                 self._add_to_output("Réponse longue - affichage par parties:", color=3)
 
                 # Afficher chaque partie avec un délai pour permettre le défilement
                 for i, part in enumerate(parts):
-                    self._add_to_output(f"Partie {i+1}/{len(parts)}:", color=1)
+                    self._add_to_output(f"Partie {i + 1}/{len(parts)}:", color=1)
                     self._add_to_output(part)
 
                     # Pause pour laisser l'utilisateur lire (sauf dernière partie)
@@ -882,7 +622,7 @@ class TUIManager:
             except:
                 pass
 
-    def _show_full_help(self):
+    def show_full_help(self):
         """Affiche l'aide complète"""
         # Titre principal
         self._add_to_output("\n=== GUIDE D'UTILISATION DU MODE TUI ===", color=1)

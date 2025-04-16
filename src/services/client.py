@@ -10,7 +10,7 @@ from anthropic import (
     APIError
 )
 
-from src.cache import ResponseCache
+from src.services.cache import ResponseCache
 
 
 class AnthropicClient:

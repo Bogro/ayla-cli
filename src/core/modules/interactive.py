@@ -2,11 +2,11 @@ import readline
 import time
 from typing import List, Dict, Optional
 
-from src.client import AnthropicClient
-from src.command_completer import CommandCompleter
-from src.conversation import ConversationManager
-from src.streamer import ResponseStreamer
-from src.ui import UI
+from src.services.client import AnthropicClient
+from src.core.modules.command_completer import CommandCompleter
+from src.core.modules.conversation import ConversationManager
+from src.core.streamer import ResponseStreamer
+from src.views.ui import UI
 
 
 class InteractiveMode:

@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Tuple, Any
 import re
 import time
 
-from src.ui import UI
+from src.views.ui import UI
 
 
 class GitManager:

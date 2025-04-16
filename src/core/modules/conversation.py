@@ -3,8 +3,8 @@ import os
 import time
 from typing import List, Dict, Optional
 
-from src.config import AylaConfig
-from src.ui import UI
+from src.config.config import AylaConfig
+from src.views.ui import UI
 
 
 class ConversationManager:

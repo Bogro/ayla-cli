@@ -4,9 +4,9 @@ import sys
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
-from src.code_analysis import ProjectAnalyzer
-from src.config import AylaConfig
-from src.ui import UI
+from src.core.modules.code_analysis import ProjectAnalyzer
+from src.config.config import AylaConfig
+from src.views.ui import UI
 
 
 class AylaSetupAssistant:
