@@ -2,7 +2,6 @@ import os
 import re
 from typing import List, Dict, Any
 
-from src.services.client import AnthropicClient
 from src.utils.file_info import FileInfo
 
 

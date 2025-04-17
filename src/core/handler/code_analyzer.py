@@ -38,6 +38,8 @@ class CodeAnalyzerHandler(BaseHandler):
 
             # Générer le prompt d'analyse
             analysis_type = args.analysis_type
+            analysis_crew = args.analysis_crew
+
             prompt = analyzer.generate_analysis_prompt(analysis_type)
 
             # Envoyer la requête
