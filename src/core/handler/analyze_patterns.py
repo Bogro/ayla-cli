@@ -6,10 +6,11 @@ from src.services.client import AnthropicClient
 
 class AnalyzePatterns(BaseHandler):
 
-    def __init__(self, client, ui, crew_manager, api_key, code_analysis_available, pattern_analyzer):
-        super().__init__(client, ui, crew_manager, api_key)
+    def __init__(self, config, client, ui, api_key, crew_manager, code_analysis_available, pattern_analyzer):
+        super().__init__(config, client, ui, api_key)
         self.code_analysis_available = code_analysis_available
         self.pattern_analyzer = pattern_analyzer
+        self.crew_manager = crew_manager
 
     async def process(self, args):
         """Analyse les design patterns dans un fichier de code"""

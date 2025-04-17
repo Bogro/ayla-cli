@@ -1,4 +1,3 @@
-import argparse
 import os
 import signal
 import sys
@@ -158,12 +157,11 @@ class AylaCli:
 
         has_git_command = any(hasattr(args, cmd) and getattr(args, cmd) for cmd in git_commands)
         if has_git_command:
-            process_git = ProcessGitHandler(self.client,
-                                          self.ui,
-                                          self.crew_manager,
-                                          api_key,
-                                          self.config,
-                                          self.git_manager)
+            process_git = ProcessGitHandler(self.config,
+                                            self.client,
+                                            self.ui,
+                                            api_key,
+                                            self.git_manager)
             await process_git.process(args)
             return
 
@@ -184,66 +182,57 @@ class AylaCli:
         # Choisir l'action en fonction des arguments
         if hasattr(args, 'analyze') and args.analyze:
             # Analyser un fichier de code
-            analyze = CodeAnalyzerHandler(self.client,
+            analyze = CodeAnalyzerHandler(self.config,
+                                          self.client,
                                           self.ui,
-                                          self.crew_manager,
                                           api_key,
-                                          self.config)
+                                          self.crew_manager)
             await analyze.process(args)
 
         elif hasattr(args, 'document') and args.document:
             # Générer de la documentation
-            generate = DocumentationGeneratorHandler(
-                self.client,
-                self.ui,
-                self.crew_manager,
-                api_key,
-                self.code_analysis_available,
-                self.config
-            )
+            generate = DocumentationGeneratorHandler(self.config,
+                                                     self.client,
+                                                     self.ui,
+                                                     api_key,
+                                                     self.crew_manager,
+                                                     self.code_analysis_available)
             await generate.process(args)
 
         elif hasattr(args, 'project') and args.project:
             # Analyser un projet entier
-            analyze_project = AnalyzeProjectHandler(
-                self.client,
-                self.ui,
-                self.crew_manager,
-                api_key
-            )
+            analyze_project = AnalyzeProjectHandler(self.config,
+                                                    self.client,
+                                                    self.ui,
+                                                    api_key)
             await analyze_project.process(args)
 
         elif hasattr(args, 'patterns_analyze') and args.patterns_analyze:
             # Analyser les design patterns dans un fichier
-            analyze_patterns = AnalyzePatterns(
-                self.client,
-                self.ui,
-                self.crew_manager,
-                api_key,
-                self.code_analysis_available,
-                self.pattern_analyzer
-            )
+            analyze_patterns = AnalyzePatterns(self.config,
+                                                self.client,
+                                                self.ui,
+                                                api_key,
+                                                self.crew_manager,
+                                                self.code_analysis_available,
+                                                self.pattern_analyzer)
             await analyze_patterns.process(args)
 
         elif hasattr(args, 'project_patterns') and args.project_patterns:
             # Analyser les design patterns dans un projet
-            analyze_project_patterns = AnalyzeProjectPatterns(
-                self.client,
-                self.ui,
-                self.crew_manager,
-                api_key,
-                self.code_analysis_available,
-                self.pattern_analyzer
-            )
+            analyze_project_patterns = AnalyzeProjectPatterns(self.config,
+                                                              self.client,
+                                                              self.ui,
+                                                              api_key,
+                                                              self.code_analysis_available,
+                                                              self.pattern_analyzer)
             await analyze_project_patterns.process(args)
 
         else:
             # Traiter une requête standard
-            process_request = ProcessRequest(
-                self.client,
-                self.ui,
-                self.file_manager,
-                self.conv_manager,
-                self.streamer
-            )
+            process_request = ProcessRequest(self.client,
+                                             self.ui,
+                                             self.file_manager,
+                                             self.conv_manager,
+                                             self.streamer)
             await process_request.process_request(args, api_key)

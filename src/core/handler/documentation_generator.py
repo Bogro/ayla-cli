@@ -7,12 +7,9 @@ from src.services.client import AnthropicClient
 
 class DocumentationGeneratorHandler(BaseHandler):
 
-    def __init__(self, client, ui, crew_manager, api_key, code_analysis_available, config):
-        super().__init__(client, ui, crew_manager, api_key)
-        self.client = client
-        self.ui = ui
-        self.api_key = api_key
-        self.config = config
+    def __init__(self, config, client, ui, api_key, crew_manager, code_analysis_available):
+        super().__init__(config, client, ui, api_key)
+        self.crew_manager = crew_manager
         self.code_analysis_available = code_analysis_available
 
     async def process(self, args):

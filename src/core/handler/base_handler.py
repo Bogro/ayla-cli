@@ -1,11 +1,11 @@
 
 class BaseHandler:
 
-    def __init__(self, client, ui, crew_manager, api_key):
+    def __init__(self, config, client, ui, api_key):
         self.client = client
         self.ui = ui
         self.api_key = api_key
-        self.crew_manager = crew_manager
+        self.config = config
 
 
     async def process(self, args):
