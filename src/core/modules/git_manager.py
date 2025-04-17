@@ -970,7 +970,7 @@ Voici le diff :
             return False
 
     def get_enhanced_log(
-            self, format_type: str = 'default', count: int = 10,
+            self, format_type: str = 'stats', count: int = 10,
             show_graph: bool = False, filter_author: Optional[str] = None
     ) -> str:
         """Affiche un historique Git amélioré avec différents formats et filtres"""
@@ -979,24 +979,27 @@ Voici le diff :
 
         # Définir les formats disponibles
         formats = {
-            'default': '--pretty=format:"%C(auto)%h %C(blue)%ad%C(auto)%d %C(reset)%s '
-                       '%C(dim green)[%an]" --date=short',
-            'detailed': '--pretty=format:"%C(auto)%h %C(blue)%ad%C(auto)%d %C(reset)%s '
-                        '%C(dim green)[%an <%ae>]" --date=iso',
-            'summary': '--pretty=format:"%C(auto)%h %C(reset)%s" --date=short',
-            'stats': '--stat',
-            'full': '--pretty=full',
+            'default': [
+                '--pretty=format:%C(auto)%h %C(blue)%ad%C(auto)%d %C(reset)%s %C(dim green)[%an]',
+                '--date=short'
+            ],
+            'detailed': [
+                '--pretty=format:%C(auto)%h %C(blue)%ad%C(auto)%d %C(reset)%s %C(dim green)[%an <%ae>]',
+                '--date=iso'
+            ],
+            'summary': [
+                '--pretty=format:%C(auto)%h %C(reset)%s',
+                '--date=short'
+            ],
+            'stats': ['--stat'],
+            'full': ['--pretty=full'],
         }
 
         # Sélectionner le format
         log_format = formats.get(format_type, formats['default'])
 
         # Construire la commande
-        command = ['log', f'-{count}']
-
-        # Ajouter le format
-        for fmt in log_format.split():
-            command.append(fmt)
+        command = ['log', f'-{count}'] + log_format
 
         # Ajouter le graphe si demandé
         if show_graph:
@@ -1981,9 +1984,9 @@ Réponds avec une liste concise de 3-5 insights importants.
         return "\n".join(sections)
 
     def display_git_analysis(self, analysis, type = None):
-        if type is 'diff':
+        if type == 'diff':
             self._display_git_diff_analysis(analysis)
-        elif type is 'retro':
+        elif type == 'retro':
             self._display_git_retrospective(analysis)
         else:
             self._display_git_analysis(analysis)

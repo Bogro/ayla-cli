@@ -466,7 +466,7 @@ class AylaSetupAssistant:
         git_group.add_argument(
             "--git-log-format",
             choices=["default", "detailed", "summary", "stats", "full"],
-            default="default",
+            default="stats",
             help="Format du log"
         )
         git_group.add_argument(
