@@ -25,7 +25,7 @@ class AnthropicClient:
             base_delay: Délai de base entre les tentatives (en secondes)
             logger: Logger pour enregistrer les événements
         """
-        self.cache = ResponseCache('./cache')
+        self.cache = ResponseCache('~/.ayla-cli/cache')
         self.client = self._create_client(api_key)
         self.max_retries = max_retries
         self.base_delay = base_delay

@@ -31,7 +31,6 @@ class AylaCli:
 
     def __init__(self):
         """Initialise l'application"""
-        # Capturer CTRL+C
         signal.signal(signal.SIGINT, self._handle_sigint)
 
         # Vérifier si l'analyse de code est disponible

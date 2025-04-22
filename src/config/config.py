@@ -86,7 +86,7 @@ class AylaConfig:
     """Gestion de la configuration de l'application"""
 
     CONFIG_DIR = os.path.expanduser("~/.ayla-cli")
-    DEFAULT_ANALYSIS_DIR = os.path.expanduser("~/ayla_analyses")
+    DEFAULT_ANALYSIS_DIR = os.path.expanduser("~/.ayla-cli/ayla_analyses")
     CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
     HISTORY_DIR = os.path.join(CONFIG_DIR, "history")
 
